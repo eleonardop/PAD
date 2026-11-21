@@ -134,11 +134,19 @@ object PadEngine {
 
     val presetNames: List<String> by lazy { (0 until NativeBridge.nativePresetCount()).map { NativeBridge.nativePresetName(it) } }
 
-    /** Ordem de exibição: presets da v0.3 primeiro (índices 8+), depois os da v0.2. */
-    val presetDisplayOrder: List<Int> by lazy {
-        val n = presetNames.size
-        (8 until n).toList() + (0 until minOf(8, n)).toList()
+    /** Categoria de cada preset ("" = versão anterior). */
+    val presetCategories: List<String> by lazy { (0 until NativeBridge.nativePresetCount()).map { NativeBridge.nativePresetCategory(it) } }
+
+    /** Biblioteca principal (v0.4): categoria -> índices, na ordem de exibição. */
+    val library: List<Pair<String, List<Int>>> by lazy {
+        listOf("FOUNDATION", "ATMOSPHERE", "CHARACTER", "TEXTURES").map { cat ->
+            cat to presetCategories.indices.filter { presetCategories[it] == cat }
+        }.filter { it.second.isNotEmpty() }
     }
+
+    /** Versões anteriores (v0.2 e v0.3), só na área Avançado, para comparação. */
+    val legacyPresets: List<Int> by lazy { presetCategories.indices.filter { presetCategories[it].isEmpty() } }
+
     fun presetDescription(index: Int): String = NativeBridge.nativePresetDescription(index)
     fun applyPreset(index: Int) = NativeBridge.nativeApplyPreset(handle, index)
 

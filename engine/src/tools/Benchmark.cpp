@@ -76,11 +76,12 @@ std::string runBenchmark(PadEngine& e, const BenchmarkOptions& o) {
         out += line;
     };
 
-    // v0.3 primeiro (índices 8+), depois os da v0.2.
+    // Biblioteca principal primeiro; das versões anteriores, só os 8 da v0.3 (o custo dos da
+    // v0.2 é igual ao do motor sem texturas, já coberto pelos casos de reverb abaixo).
     const int total = presetCount();
     int order[64], n = 0;
-    for (int p = 8; p < total && n < 64; ++p) order[n++] = p;
-    for (int p = 0; p < 8 && p < total && n < 64; ++p) order[n++] = p;
+    for (int p = 0; p < total && n < 64; ++p) if (presetIsCurrent(p)) order[n++] = p;
+    for (int p = 8; p < 16 && p < total && n < 64; ++p) order[n++] = p;
     if (o.quick) n = 1;
     for (int k = 0; k < n; ++k) {
         const int p = order[k];
