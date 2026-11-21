@@ -11,6 +11,7 @@ set(PAD_ENGINE_SOURCES
     ${CMAKE_CURRENT_LIST_DIR}/src/core/Presets.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/core/WavIO.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/core/Sources.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/src/tools/Benchmark.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/dsp/Wavetable.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/dsp/Reverb.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/dsp/PadSynth.cpp
@@ -59,6 +60,9 @@ if(NOT ANDROID AND PAD_ENGINE_BUILD_TESTS)
     target_link_libraries(pad_scenarios PRIVATE pad_engine)
     target_compile_definitions(pad_scenarios PRIVATE PAD_ASSETS_DIR="${CMAKE_CURRENT_LIST_DIR}/../assets")
     target_link_libraries(pad_wavgen PRIVATE pad_engine)
+    add_executable(pad_bench ${CMAKE_CURRENT_LIST_DIR}/../tools/bench/Bench.cpp)
+    target_link_libraries(pad_bench PRIVATE pad_engine)
+    target_compile_definitions(pad_bench PRIVATE PAD_ASSETS_DIR="${CMAKE_CURRENT_LIST_DIR}/../assets")
     add_executable(pad_reverblab ${CMAKE_CURRENT_LIST_DIR}/../tools/reverblab/ReverbLab.cpp)
     target_link_libraries(pad_reverblab PRIVATE pad_engine)
     target_compile_definitions(pad_wavgen PRIVATE PAD_ASSETS_DIR="${CMAKE_CURRENT_LIST_DIR}/../assets")

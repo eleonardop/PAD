@@ -11,8 +11,8 @@ android {
         applicationId = "com.eleonardop.pad"
         minSdk = 26          // Android 8.0: AAudio disponível (Oboe usa OpenSL ES só como reserva)
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0-motor"
+        versionCode = 2
+        versionName = "0.2.0-som"
 
         ndk {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
@@ -35,6 +35,14 @@ android {
 
     buildFeatures {
         prefab = true
+    }
+
+    // Samples (FLAC, ~27 MB) e créditos ficam em <repo>/assets, compartilhados com os testes
+    // do motor no computador. FLAC já é comprimido: guardar sem nova compressão no APK
+    // deixa a leitura mais rápida.
+    sourceSets["main"].assets.srcDirs("../../assets")
+    androidResources {
+        noCompress += "flac"
     }
 
     externalNativeBuild {

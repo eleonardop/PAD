@@ -8,7 +8,9 @@ internal object NativeBridge {
         System.loadLibrary("padjni")
     }
 
-    @JvmStatic external fun nativeCreate(): Long
+    @JvmStatic external fun nativeCreate(assets: android.content.res.AssetManager?): Long
+    @JvmStatic external fun nativeBenchmark(handle: Long, quick: Boolean): String
+    @JvmStatic external fun nativeWaitForSources(handle: Long, seconds: Double): Boolean
     @JvmStatic external fun nativeDestroy(handle: Long)
     @JvmStatic external fun nativeStart(handle: Long): Boolean
     @JvmStatic external fun nativeShutdownAudio(handle: Long)

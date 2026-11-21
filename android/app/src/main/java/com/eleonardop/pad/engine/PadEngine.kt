@@ -1,15 +1,16 @@
 package com.eleonardop.pad.engine
 
+import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import java.util.concurrent.Executors
 
 /** Parâmetros do motor. A ordem é a mesma de `ParamId` em engine/src/core/Params.h. */
-enum class PadParam(val label: String) {
-    LAYER_WARM("Camada Warm"),
-    LAYER_AIR("Camada Air"),
+enum class PadParam(val label: String, val choices: List<String>? = null) {
+    LAYER_WARM("Camada Warm (PADsynth)"),
+    LAYER_AIR("Camada Air (harmônica)"),
     LAYER_STRINGS("Camada Strings"),
-    LAYER_SHIMMER("Camada Shimmer"),
+    LAYER_SHIMMER("Camada Shimmer (Glass)"),
     LAYER_LOW("Camada Low"),
     WARMTH("Calor (Warmth)"),
     BRIGHTNESS("Brilho"),
@@ -18,15 +19,27 @@ enum class PadParam(val label: String) {
     WIDTH("Largura estéreo"),
     MOVEMENT("Movimento"),
     DETUNE("Detune"),
-    REVERB("Reverb"),
+    REVERB("Reverb (mixagem)"),
     REVERB_DECAY("Duração do reverb (s)"),
     REVERB_SIZE("Tamanho da sala"),
     REVERB_DAMPING("Amortecimento do reverb"),
-    SHIMMER("Shimmer"),
+    SHIMMER("Shimmer do reverb"),
     ATTACK("Attack (s)"),
     RELEASE("Release (s)"),
     CROSSFADE_TIME("Crossfade (s)"),
-    MASTER_VOLUME("Volume geral");
+    MASTER_VOLUME("Volume geral"),
+    // v0.2
+    LAYER_VOX("Camada Vox (coral)"),
+    LAYER_TEXTURE("Camada Textura (piano/órgão)"),
+    CHORUS("Chorus ensemble"),
+    EVOLUTION("Evolução"),
+    INTENSITY("Intensidade"),
+    REVERB_TYPE("Tipo de reverb", listOf("Clássico (v0.1)", "Plate (Dattorro)", "Cloud (Cloud Seed)")),
+    PRE_DELAY("Pré-delay (s)"),
+    EARLY_REFLECTIONS("Reflexões iniciais"),
+    DIFFUSION("Difusão"),
+    STRINGS_SOURCE("Fonte das cordas", listOf("Cordas reais (VSCO 2 CE)", "Cordas sintéticas (v0.1)")),
+    TEXTURE_TYPE("Tipo de textura", listOf("Piano Cathedral (Salamander)", "Órgão suave (VCSL)"));
 
     val id: Int get() = ordinal
     val range: FloatArray by lazy { NativeBridge.nativeParamRange(ordinal) } // [min, max, padrão]
@@ -40,13 +53,19 @@ enum class ChordType(val label: String) {
 
 data class EngineStats(
     val activeVoices: Int,
-    val load: Float,
+    val load: Float,          // carga média do callback de áudio (1,0 = 100% do tempo disponível)
     val peak: Float,
     val limiterGain: Float,
     val playing: Boolean,
     val deviceSampleRate: Int,
     val bufferFrames: Int,
     val voiceSteals: Int,
+    val loadPeak: Float,      // pior bloco desde a leitura anterior
+    val sourcesMemoryMb: Float,
+    val sourcesReady: Int,
+    val sourcesFailed: Int,
+    val xRuns: Int,           // falhas de buffer contadas pelo Android (-1 = indisponível)
+    val burstFrames: Int,
 )
 
 /**
@@ -56,7 +75,14 @@ data class EngineStats(
  * no lado nativo viram comandos numa fila sem trava ou parâmetros atômicos.
  */
 object PadEngine {
-    private val handle: Long by lazy { NativeBridge.nativeCreate() }
+    @Volatile private var appContext: Context? = null
+
+    /** Chamar uma vez (Activity ou Service) antes de qualquer outra função: dá acesso aos samples do APK. */
+    fun init(context: Context) {
+        if (appContext == null) appContext = context.applicationContext
+    }
+
+    private val handle: Long by lazy { NativeBridge.nativeCreate(appContext?.assets) }
     private val worker = Executors.newSingleThreadExecutor { r -> Thread(r, "pad-engine-init") }
     private val main = Handler(Looper.getMainLooper())
 
@@ -93,8 +119,30 @@ object PadEngine {
     fun presetDescription(index: Int): String = NativeBridge.nativePresetDescription(index)
     fun applyPreset(index: Int) = NativeBridge.nativeApplyPreset(handle, index)
 
+    /** Espera as fontes pedidas pelo preset/parâmetros atuais (fora da thread de UI). */
+    fun waitForSources(seconds: Double = 20.0, onDone: (Boolean) -> Unit) {
+        worker.execute {
+            val ok = NativeBridge.nativeWaitForSources(handle, seconds)
+            main.post { onDone(ok) }
+        }
+    }
+
+    /**
+     * Teste de desempenho no próprio aparelho. Para o som, renderiza todos os presets fora do
+     * tempo real, mede o tempo de cada bloco e religa a saída. Leva ~2–3 min (rápido: ~30 s).
+     */
+    fun runBenchmark(quick: Boolean, onDone: (String) -> Unit) {
+        worker.execute {
+            val r = NativeBridge.nativeBenchmark(handle, quick)
+            main.post { onDone(r) }
+        }
+    }
+
     fun stats(): EngineStats {
         val s = NativeBridge.nativeStats(handle)
-        return EngineStats(s[0].toInt(), s[1], s[2], s[3], s[4] > 0.5f, s[5].toInt(), s[6].toInt(), s[7].toInt())
+        return EngineStats(
+            s[0].toInt(), s[1], s[2], s[3], s[4] > 0.5f, s[5].toInt(), s[6].toInt(), s[7].toInt(),
+            s[8], s[9], s[10].toInt(), s[11].toInt(), s[12].toInt(), s[13].toInt(),
+        )
     }
 }

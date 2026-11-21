@@ -1,4 +1,8 @@
-# PAD Worship — Arquitetura do motor de áudio (Etapa 1)
+# PAD Worship — Arquitetura do motor de áudio
+
+> As seções 1 a 11 descrevem a base criada na etapa 1 (v0.1). A seção 12 descreve o que
+> a etapa 2 (v0.2, qualidade sonora) acrescentou ou substituiu. Onde as duas divergem,
+> vale a seção 12.
 
 Este documento registra as decisões técnicas do motor, para que qualquer desenvolvedor possa continuar o projeto.
 
@@ -169,3 +173,100 @@ Warm, Deep, Air, Shimmer, Cinematic e Ambient, cada um com equilíbrio próprio 
 * Fone conectado/desconectado e troca de Bluetooth: `onErrorAfterClose` reabre o stream sem perder o estado do motor (o acorde continua).
 * **Segundo plano:** `PadPlaybackService` (serviço em primeiro plano, tipo `mediaPlayback`) mantém o processo vivo com a tela desligada. A notificação tem o botão "Parar".
 * O motor nativo é compilado com `-O3` mesmo no APK de debug.
+
+
+## 12. Versão 0.2 — qualidade sonora
+
+### 12.1 Fontes sonoras e carregamento sob demanda
+
+O motor deixou de ter uma única tabela por camada e passou a ter uma **biblioteca de fontes**
+(`core/Sources.*`), cada uma um `ZoneBank` (zonas por nota, int16 com escala, guardas para a
+interpolação Hermite):
+
+| Fonte | Tipo | Uso |
+|---|---|---|
+| WarmDark / WarmOpen | PADsynth (2^18 amostras por zona) | camada Warm; o morph entre as duas é o "timbre que respira" |
+| VoxOh / VoxAh | PADsynth com formantes | camada Vox (coral) |
+| AirA / AirB | PADsynth sem fundamental, centrado em ~2,2 kHz | camada Air, harmônica (sem ruído) |
+| Glass | PADsynth uma oitava acima | camada Shimmer |
+| StringsReal | samples VSCO 2 CE (CC0) | camada Strings (padrão) |
+| StringsSynth | cordas sintéticas da v0.1 | alternativa e reserva automática |
+| PianoCathedral | Salamander (CC BY 3.0), espectro congelado | camada Textura (opção 1) |
+| Organ | VCSL, órgão de tubos quieto (CC0) | camada Textura (opção 2) |
+
+* As famílias de morph (WarmDark/WarmOpen, VoxOh/VoxAh, AirA/AirB) usam a **mesma semente de
+  fases**: a mistura linear das duas tabelas interpola o espectro sem cancelamentos de fase.
+* `SourceLibrary` tem um thread carregador próprio. O motor calcula a máscara de fontes
+  necessárias a partir dos parâmetros (`PadEngine::wantedMask`) a cada `setParam`/`applyPreset`.
+  O callback só lê ponteiros atômicos; publica a cada bloco quais fontes está usando, e uma fonte
+  só é liberada depois de 2 blocos seguidos sem uso. Nada é alocado nem liberado no callback.
+* Uma fonte que chega atrasada entra com rampa de 80 ms na voz que já está tocando. Se os samples
+  das cordas falharem (assets ausentes ou corrompidos), a voz usa as cordas sintéticas.
+* Os samples são lidos por um `AssetProvider` (arquivo no computador, `AAssetManager` no Android)
+  e decodificados com dr_flac. Cada zona é normalizada para −20 dBFS RMS na carga.
+
+### 12.2 Voz
+
+`Voice` mantém 6 camadas de tabela (`Layer`: duas fontes, posição em ponto fixo 32.32,
+rampas de ganho e de morph) e o oscilador do grave. Por voz:
+
+* **Ladder ZDF de 4 polos** (`dsp/Ladder.h`) nas camadas sintetizadas; corte =
+  `(f0·(3+10·b²) + 600 + 5200·b) · 2^(evolução·mod + 0,35·movimento·mod + 1,4·(intensidade−0,5))`,
+  ressonância 0,2–0,7 com o Calor, drive suave 0,4–1,4.
+* Samples passam por um passa-baixa SVF em `corte·2,5 + 1500 Hz` (seguem o Brilho sem perder o
+  caráter próprio). Air passa por passa-baixa de 5,5 a 9 kHz.
+* **Evolução**: três moduladores lentos **comuns a todas as vozes** (soma de dois senos com razão
+  áurea, ciclos de ~60 s com Evolução baixa a ~15 s com Evolução alta), mais 30% de um modulador
+  próprio de cada voz. Movem o morph Warm, Vox e Air, o corte do filtro e uma respiração de
+  até ±1,3 dB. Moduladores independentes por voz se cancelavam na soma do acorde; o comum faz o
+  conjunto respirar junto, como uma seção.
+* **Intensidade**: abre o filtro (±0,7 oitava), puxa o morph para os timbres abertos e muda o
+  nível em ±3 dB.
+* Detune L/R de 0 a 9 cents (as leituras L e R da mesma tabela correm em velocidades
+  ligeiramente diferentes): largura viva sem chorus.
+
+### 12.3 Cadeia de saída
+
+```
+vozes ─► pad ─► HP 70 Hz ─► Ensemble estéreo (3 fases) ─┐
+       ► air ──────────────────────────────────────────┤
+       ► shim ─────────────────────────────────────────┤──► seco ─► low shelf ─► bell 300 Hz ─► corte 6,5 kHz ─► tilt ─► saturação ─► DC
+       ► low  ─────────────────────────────────────────┘
+envio = pad + air + shim·(0,6+0,8·shimmer) + 0,1·low ─► HP 180 Hz ─► LP 7,5 kHz ─► shimmer (+12 st, 700 Hz–5,2 kHz, fb ≤ 0,30)
+      ─► reverb (3 slots: Clássico, Plate, Cloud; troca em rampa de 0,35 s) ─► molhado
+saída = (seco·(1−0,3·rv) + molhado·1,3·rv)·1,70 ─► M/S (graves < 140 Hz em mono) ─► compressor de cola ─► volume ─► limitador −1 dBFS
+```
+
+* **Ensemble** (`dsp/Ensemble.h`): três linhas moduladas por canal, canal direito defasado 60°,
+  soma × 0,577 para manter o nível; seco `1−0,35c`, molhado `0,75c`.
+* **Reverbs** (`dsp/ReverbBase.h`): interface comum, saída 100% molhada.
+  * Clássico: o FDN da v0.1 (mantido como alternativa).
+  * Plate: Dattorro (1997), escrito a partir do artigo; RT60 calibrado pelo ganho por volta do tanque.
+  * Cloud: Cloud Seed Core (MIT, Ghost Note Audio), modificado para não alocar no áudio e com
+    buffers dimensionados para 48 kHz (memória de 67 → 23 MB). RT60 calibrado
+    (`(T − 0,9)/1,12` no parâmetro interno).
+  * Um reverb trocado continua processando com entrada zero até a cauda morrer: a troca não
+    corta a cauda.
+* **Reflexões iniciais**, pré-delay e difusão são parâmetros (EarlyReflections, PreDelay, Diffusion).
+* **Shimmer** fora do reverb, com banda limitada: as oitavas sobem pela cauda sem virar chiado.
+* **Compressor de cola**: limiar −17 dB, razão 1,6, joelho 8 dB, ataque 40 ms, release 450 ms;
+  só segura picos de soma de camadas, quase não age no uso normal.
+* **Trim por preset** (`Preset::trimDb`): todos os presets ficam a ±0,5 dB de −20 LUFS na
+  progressão de teste, sem mexer no Volume geral do operador.
+
+### 12.4 Parâmetros novos (ids 21 a 31, acrescentados no fim)
+
+LayerVox, LayerTexture, Chorus, Evolution, Intensity, ReverbType, PreDelay, EarlyReflections,
+Diffusion, StringsSource, TextureType. Os ids da v0.1 não mudaram.
+
+### 12.5 Ferramentas
+
+| Ferramenta | Função |
+|---|---|
+| `pad_tests` | 42 testes (o de 10 minutos é pulado com `--rapido`) |
+| `pad_wavgen` | 34 WAVs de demonstração e `relatorio.txt` |
+| `pad_scenarios` | cenários de comparação; compilado também contra a v0.1 (`-DPAD_V1`) |
+| `tools/compare/make_comparison.py` | normaliza em −20 LUFS, mede e gera espectrogramas antes × depois |
+| `pad_reverblab` + `tools/reverblab/analyze_ir.py` | respostas ao impulso e medidas objetivas dos 3 reverbs |
+| `pad_bench` | teste de desempenho (o mesmo código roda no app, botão "Teste de desempenho") |
+| `tools/samplelab/prepare_samples.py` | gera os samples de `assets/samples` a partir dos repositórios originais |

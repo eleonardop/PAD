@@ -22,6 +22,9 @@ public:
     bool isRunning() const { return running_.load(); }
     int deviceSampleRate() const { return deviceRate_.load(); }
     int bufferFrames() const { return bufferFrames_.load(); }
+    int burstFrames() const { return burst_.load(); }
+    // Falhas de buffer contadas pelo Android (AAudio). -1 se não disponível.
+    int xRuns();
 
     // Callbacks do Oboe
     oboe::DataCallbackResult onAudioReady(oboe::AudioStream* stream, void* audioData, int32_t numFrames) override;
@@ -36,6 +39,8 @@ private:
     std::atomic<bool> running_{false};
     std::atomic<int> deviceRate_{0};
     std::atomic<int> bufferFrames_{0};
+    std::atomic<int> burst_{0};
+    std::atomic<int> lastXRuns_{-1};
 };
 
 } // namespace padandroid

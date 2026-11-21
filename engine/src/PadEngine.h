@@ -42,6 +42,7 @@ struct EngineStats {
     float peakOut = 0.0f;         // pico absoluto de saída desde a última leitura
     float glueMaxReductionDb = 0.0f;
     float load = 0.0f;            // tempo de processamento / duração do buffer (média móvel)
+    float loadPeak = 0.0f;        // pior bloco desde a última leitura
     int currentKey = 0;
     int currentChord = 0;
     bool playing = false;
@@ -153,7 +154,7 @@ private:
     // Telemetria
     std::atomic<int> statVoices_{0};
     std::atomic<uint64_t> statSteals_{0}, statHardSteals_{0}, statDropped_{0};
-    std::atomic<float> statLimiter_{1.0f}, statPeak_{0.0f}, statLoad_{0.0f}, statGlue_{0.0f};
+    std::atomic<float> statLimiter_{1.0f}, statPeak_{0.0f}, statLoad_{0.0f}, statGlue_{0.0f}, statLoadPeak_{0.0f};
     std::atomic<bool> statPlaying_{false};
     float peakAcc_ = 0.0f, loadEma_ = 0.0f;
 };

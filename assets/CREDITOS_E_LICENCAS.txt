@@ -1,0 +1,41 @@
+PAD Worship — créditos e licenças dos sons e do código de terceiros
+
+SONS GRAVADOS (samples)
+Os samples abaixo foram processados pelo PAD Worship (escolha das notas, região de
+sustentação, loop sem emenda, normalização de nível e, no piano, "congelamento" do
+espectro para virar som sustentado). As gravações originais pertencem aos autores
+indicados.
+
+1) Cordas — "VSCO 2 Community Edition" (Versilian Studios, Sam Gossner)
+   Naipes de violoncelo, viola e violino, notas longas com vibrato.
+   Licença: CC0 1.0 (domínio público). https://github.com/sgossner/VSCO-2-CE
+   Texto da licença: licencas/VSCO-2-CE_CC0.txt
+
+2) Órgão suave — "Versilian Community Sample Library (VCSL)" (Versilian Studios)
+   Órgão de tubos, manual quieto.
+   Licença: CC0 1.0 (domínio público). https://github.com/sgossner/VCSL
+   Texto da licença: licencas/VCSL_CC0.txt
+
+3) Piano "Cathedral" — "Salamander Grand Piano V3" por Alexander Holm
+   Licença: Creative Commons Atribuição 3.0 (CC BY 3.0)
+   https://creativecommons.org/licenses/by/3.0/
+   Origem: https://archive.org/details/SalamanderGrandPianoV3
+   (versão sfz/FLAC mantida em https://github.com/sfzinstruments/SalamanderGrandPiano)
+   Modificado: as notas foram transformadas em sons sustentados (espectro congelado),
+   com loop e nível ajustados. O autor original não endossa este app.
+   Texto da licença: licencas/Salamander_CC-BY-3.0.txt
+
+CÓDIGO DE TERCEIROS
+- Reverb algorithm: Cloud Seed by Ghost Note Audio (Cloud Seed Core, licença MIT).
+  https://github.com/GhostNoteAudio/CloudSeedCore — licencas/CloudSeed_MIT.txt
+  Modificado para não alocar memória no áudio e para economizar memória a 48 kHz.
+- dr_flac, de David Reid (dr_libs): domínio público (Unlicense) ou MIT-0.
+  https://github.com/mackron/dr_libs
+- Oboe (Google), biblioteca de áudio para Android: licença Apache 2.0.
+  https://github.com/google/oboe
+
+SONS SINTÉTICOS
+As camadas Warm, Vox (coral), Air, Shimmer (Glass), Low e as cordas sintéticas são
+geradas pelo próprio app (síntese PADsynth e wavetable), sem samples de terceiros.
+O algoritmo PADsynth foi descrito por Nasca Octavian Paul; a implementação no PAD
+Worship foi escrita do zero a partir da descrição publicada.

@@ -188,6 +188,7 @@ EngineStats PadEngine::readStats() {
     s.peakOut = statPeak_.exchange(0.0f, std::memory_order_relaxed);
     s.glueMaxReductionDb = statGlue_.exchange(0.0f, std::memory_order_relaxed);
     s.load = statLoad_.load(std::memory_order_relaxed);
+    s.loadPeak = statLoadPeak_.exchange(0.0f, std::memory_order_relaxed);
     s.currentKey = uiKey_.load();
     s.currentChord = uiChord_.load();
     s.playing = statPlaying_.load(std::memory_order_relaxed);
@@ -442,8 +443,10 @@ void PadEngine::process(float* out, int frames) {
     peakAcc_ = 0.0f;
     const double elapsed = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
     const double budget = static_cast<double>(frames) / sr_;
-    loadEma_ += (static_cast<float>(elapsed / budget) - loadEma_) * 0.05f;
+    const float inst = static_cast<float>(elapsed / budget);
+    loadEma_ += (inst - loadEma_) * 0.05f;
     statLoad_.store(loadEma_, std::memory_order_relaxed);
+    atomicMax(statLoadPeak_, inst);
 }
 
 } // namespace pad

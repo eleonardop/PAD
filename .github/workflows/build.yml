@@ -7,37 +7,103 @@ on:
 
 jobs:
   motor:
-    name: Motor C++ — testes e WAVs
+    name: Motor C++ (x86-64) — testes, sanitizers, WAVs e comparações
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0   # precisa da tag v0.1.0-motor para a comparação antes/depois
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
 
       - name: Compilar (Release)
         run: |
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
           cmake --build build -j
 
-      - name: Testes automatizados
-        run: ./build/engine/pad_tests | tee resultado_testes.txt
+      - name: Testes automatizados (inclui 10 minutos simulados)
+        run: ./build/engine/pad_tests | tee resultado_testes_x86_64.txt
 
       - name: Testes com AddressSanitizer + UBSan (memória e comportamento indefinido)
         run: |
           cmake -S . -B build-asan -DCMAKE_BUILD_TYPE=Debug \
             -DCMAKE_CXX_FLAGS="-O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer -fno-sanitize-recover=undefined"
-          cmake --build build-asan -j
+          cmake --build build-asan -j --target pad_tests
           ./build-asan/engine/pad_tests --rapido | tee resultado_testes_sanitizers.txt
 
-      - name: Gerar WAVs de avaliação
+      - name: Desempenho (servidor x86-64, só referência — não vale como medida do celular)
+        run: ./build/engine/pad_bench | tee desempenho_x86_64.txt
+
+      - name: Gerar WAVs de demonstração
         run: ./build/engine/pad_wavgen wav_exemplos
 
-      - name: Publicar WAVs e relatórios
+      - name: Respostas ao impulso e medidas dos reverbs
+        run: |
+          pip install --quiet numpy scipy soundfile matplotlib
+          mkdir -p reverbs
+          ./build/engine/pad_reverblab reverbs | tee reverbs/cpu.txt
+          python3 tools/reverblab/analyze_ir.py reverbs reverbs/medidas.csv | tee reverbs/medidas.txt
+
+      - name: Comparação antes (v0.1) × depois (v0.2), loudness igualado
+        run: |
+          git worktree add ../v01 v0.1.0-motor
+          g++ -O2 -std=c++17 -DPAD_V1 -I../v01/engine/src tools/compare/Scenarios.cpp \
+            $(find ../v01/engine/src -name '*.cpp') -lpthread -o scen_v1
+          ./scen_v1 cmp_antes
+          ./build/engine/pad_scenarios cmp_depois
+          python3 tools/compare/make_comparison.py cmp_antes cmp_depois comparacao
+
+      - name: Publicar resultados (testes, desempenho, WAVs)
         uses: actions/upload-artifact@v4
         with:
-          name: PAD-wav-exemplos-e-testes
+          name: PAD-resultados-x86_64
           path: |
-            wav_exemplos/
-            resultado_testes.txt
+            resultado_testes_x86_64.txt
             resultado_testes_sanitizers.txt
+            desempenho_x86_64.txt
+            wav_exemplos/
+            reverbs/
+
+      - name: Publicar comparação antes × depois
+        uses: actions/upload-artifact@v4
+        with:
+          name: PAD-comparacao-antes-depois
+          path: |
+            comparacao/normalizado/
+            comparacao/espectrogramas/
+            comparacao/medicoes.csv
+            comparacao/medicoes.md
+
+  motor-arm64:
+    name: Motor C++ (ARM64) — testes e desempenho
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Compilar (Release, ARM64)
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build -j
+
+      - name: Testes automatizados em ARM64
+        run: ./build/engine/pad_tests | tee resultado_testes_arm64.txt
+
+      # Servidor ARM (Neoverse), não um celular: confirma que o código roda e dá uma
+      # ordem de grandeza. A medida que vale é a do botão "Teste de desempenho" no aparelho.
+      - name: Desempenho em ARM64 (referência)
+        run: |
+          lscpu | tee desempenho_arm64.txt
+          ./build/engine/pad_bench | tee -a desempenho_arm64.txt
+
+      - name: Publicar resultados ARM64
+        uses: actions/upload-artifact@v4
+        with:
+          name: PAD-resultados-arm64
+          path: |
+            resultado_testes_arm64.txt
+            desempenho_arm64.txt
 
   android:
     name: App Android (APK)

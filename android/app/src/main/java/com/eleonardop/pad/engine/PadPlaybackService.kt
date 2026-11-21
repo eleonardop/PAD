@@ -24,6 +24,7 @@ class PadPlaybackService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        PadEngine.init(this)
         when (intent?.action) {
             ACTION_STOP_NOTES -> PadEngine.stop()
             ACTION_SHUTDOWN -> {

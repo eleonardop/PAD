@@ -34,6 +34,7 @@ bool OboePlayer::openStream() {
     // Pads não exigem latência mínima; 4 bursts dão margem contra interrupções do sistema
     // (~10–20 ms na maioria dos aparelhos), priorizando continuidade sobre latência.
     const int burst = stream_->getFramesPerBurst();
+    burst_ = burst;
     auto res = stream_->setBufferSizeInFrames(burst * 4);
     bufferFrames_ = res ? res.value() : stream_->getBufferSizeInFrames();
     deviceRate_ = stream_->getSampleRate();
@@ -48,7 +49,8 @@ bool OboePlayer::start() {
     if (running_) return true;
     if (!engine_.isPrepared()) {
         LOGI("Preparando motor...");
-        if (!engine_.prepare(static_cast<float>(kEngineSampleRate))) return false;
+        // Espera as fontes do preset inicial (geração PADsynth + leitura dos samples, ~1–3 s).
+        if (!engine_.prepare(static_cast<float>(kEngineSampleRate), 30.0)) return false;
     }
     if (!openStream()) return false;
     const oboe::Result r = stream_->requestStart();
@@ -60,6 +62,17 @@ bool OboePlayer::start() {
     }
     running_ = true;
     return true;
+}
+
+int OboePlayer::xRuns() {
+    // Chamado pela tela a cada meio segundo: nunca espera (start() pode segurar a trava
+    // durante a preparação do motor); se ocupado, devolve o último valor lido.
+    std::unique_lock<std::mutex> g(lock_, std::try_to_lock);
+    if (!g.owns_lock()) return lastXRuns_.load();
+    if (!stream_) return lastXRuns_.load();
+    auto r = stream_->getXRunCount();
+    if (r) lastXRuns_ = r.value();
+    return lastXRuns_.load();
 }
 
 void OboePlayer::stop() {
