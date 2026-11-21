@@ -7,8 +7,8 @@ Data: 21/11/2026. Medições feitas no servidor de desenvolvimento (Linux x86-64
 | Critério | Situação |
 |---|---|
 | Motor C++ implementado | **Concluído**: camadas, vozes, DSP, efeitos, presets |
-| Integração JNI/Kotlin funcional | **Implementada, compilação pendente de confirmação.** O código C++ da ponte e do Oboe foi verificado com os cabeçalhos reais do Oboe 1.9.3. O APK só pode ser compilado no GitHub Actions (o ambiente de desenvolvimento não tem acesso ao Android SDK). Ver §5 |
-| Áudio reproduzido de verdade | **Concluído no motor** (WAVs gerados pelo mesmo código). No celular, depende do APK |
+| Integração JNI/Kotlin funcional | **Implementada e compilando**: o APK (arm64, armv7, x86_64) é gerado no GitHub Actions. **Ainda não testada num celular real** |
+| Áudio reproduzido de verdade | **Concluído no motor** (WAVs gerados pelo mesmo código). No celular, falta confirmar instalando o APK |
 | Camadas combináveis | **Concluído**: 5 camadas com volume independente |
 | Acordes e tonalidades com transição suave | **Concluído e medido** (ver §2) |
 | Efeitos implementados | **Concluído**: reverb FDN, shimmer, filtros de tom, width, saturação suave, limitador |
@@ -71,7 +71,7 @@ Ficam no artefato `PAD-wav-exemplos-e-testes` (pasta `wav_exemplos/`, PCM 24 bit
 3. **Polifonia no aparelho.** O custo por voz (0,25% de um núcleo no servidor) deve ser de 3 a 5 vezes maior num núcleo de celular. No uso real (até ~20 vozes) isso fica abaixo de ~25% de um núcleo, com folga.
    *Proposta:* medir no Galaxy (a carga do callback já é calculada em `PadEngine.stats().load`) e, se necessário, otimizar com NEON.
 4. **Foco de áudio.** O app não pede foco de áudio, para não ser pausado por notificações durante o culto. Outro app que toque mídia vai se misturar com o pad. Isso é intencional, mas deve ser decidido junto com a interface.
-5. **APK não compilado aqui.** Ver §5.
+5. **Teste no aparelho pendente.** O APK compila no CI, mas o funcionamento no celular (abertura do stream, tela desligada, troca de fone/Bluetooth) precisa ser conferido no aparelho.
 
 ## 5. Como obter o APK e os WAVs
 
@@ -79,7 +79,7 @@ A cada envio ao repositório, o GitHub Actions executa o fluxo **"Compilar e tes
 * **Motor C++:** compila, roda os 26 testes, roda os testes com sanitizers e gera os WAVs (artefato `PAD-wav-exemplos-e-testes`);
 * **App Android:** compila o APK (artefato `PAD-Worship-APK`).
 
-Se o job do Android falhar na primeira execução, o log mostra a linha exata do erro. Nesse caso, a correção é pontual na configuração do Gradle.
+Os dois jobs estão passando (motor: 26 testes + sanitizers; Android: APK gerado).
 
 ## 6. Próxima etapa sugerida
 
