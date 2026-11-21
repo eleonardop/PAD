@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">PAD Worship</string>
+    <string name="channel_name">Reprodução do pad</string>
+    <string name="notification_text">Motor de pads ativo</string>
+    <string name="stop_notes">Parar</string>
+</resources>

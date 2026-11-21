@@ -1,0 +1,12 @@
+build/
+build-*/
+wav_exemplos/
+*.wav
+android/.gradle/
+android/build/
+android/app/build/
+android/app/.cxx/
+android/local.properties
+.idea/
+*.iml
+.DS_Store

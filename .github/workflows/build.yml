@@ -1,0 +1,67 @@
+name: Compilar e testar
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  motor:
+    name: Motor C++ — testes e WAVs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compilar (Release)
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build -j
+
+      - name: Testes automatizados
+        run: ./build/engine/pad_tests | tee resultado_testes.txt
+
+      - name: Testes com AddressSanitizer + UBSan (memória e comportamento indefinido)
+        run: |
+          cmake -S . -B build-asan -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_CXX_FLAGS="-O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer -fno-sanitize-recover=undefined"
+          cmake --build build-asan -j
+          ./build-asan/engine/pad_tests --rapido | tee resultado_testes_sanitizers.txt
+
+      - name: Gerar WAVs de avaliação
+        run: ./build/engine/pad_wavgen wav_exemplos
+
+      - name: Publicar WAVs e relatórios
+        uses: actions/upload-artifact@v4
+        with:
+          name: PAD-wav-exemplos-e-testes
+          path: |
+            wav_exemplos/
+            resultado_testes.txt
+            resultado_testes_sanitizers.txt
+
+  android:
+    name: App Android (APK)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: android-actions/setup-android@v3
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.10.2"
+
+      - name: Compilar APK
+        working-directory: android
+        run: gradle assembleDebug --stacktrace
+
+      - name: Publicar APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: PAD-Worship-APK
+          path: android/app/build/outputs/apk/debug/*.apk
