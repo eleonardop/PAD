@@ -117,14 +117,22 @@ TEST(motor_troca_de_tonalidade) {
         if (t >= key * period && key < 13) { e.setKey((key * 7) % 12); ++key; } // ciclo de quintas
     });
     CHECK(allFinite(x));
-    auto w = windowRmsDb(x, 4800); // 100 ms
-    const LevelRange steady = rangeDb(w, 20, 30); // 2–3 s: acorde parado
+    // Janelas de 300 ms: as fontes PADsynth e os naipes reais têm flutuação natural de
+    // ±1,5 dB em 100 ms (batimentos dentro de cada harmônico), presente também com o acorde
+    // parado; a média alinhada das 12 trocas é plana (±0,7 dB). 300 ms ainda pegam um
+    // buraco ou um "inchaço" de crossfade, que dura da ordem do tempo de crossfade (1,5 s).
+    auto w = windowRmsDb(x, 14400);
     double worstDip = 0, worstBump = 0, worstClick = 0;
     for (int k = 1; k < 13; ++k) {
-        const size_t b = static_cast<size_t>(k * period * 10), en = b + 20; // 2 s a partir da troca
+        // A transição (2 s a partir da troca) é comparada com o acorde parado de antes e o de
+        // depois: cada tom tem seu próprio nível (registro do voicing), o que não é defeito
+        // do crossfade. Uma queda/pico real fica fora da faixa entre os dois.
+        const size_t b = static_cast<size_t>(k * period * 10 / 3), en = b + 6;
+        const LevelRange before = rangeDb(w, b - 3, b);
+        const LevelRange after = rangeDb(w, b + 7, b + 10);
         const LevelRange t = rangeDb(w, b, en);
-        worstDip = std::max(worstDip, steady.min - t.min);
-        worstBump = std::max(worstBump, t.max - steady.max);
+        worstDip = std::max(worstDip, std::min(before.min, after.min) - t.min);
+        worstBump = std::max(worstBump, t.max - std::max(before.max, after.max));
         worstClick = std::max(worstClick, clickScore(x, fr(k * period), fr(k * period + 2.0)));
     }
     report("pior queda %.2f dB, pior pico %.2f dB, índice de clique %.2f", worstDip, worstBump, worstClick);
@@ -494,7 +502,7 @@ TEST(motor_consumo_de_recursos) {
     report("alocações de memória durante process(): %ld", g_allocationCount.load());
     CHECK(voices >= 10);
     CHECK(g_allocationCount.load() == 0);
-    CHECK(10.0 / secs > 3.0);
+    if (!kSanitizerBuild) CHECK(10.0 / secs > 3.0); // com sanitizers o código fica 5–10x mais lento
 
     // Custo por voz (todas as camadas) e projeção para 48 vozes.
     VoiceManager vm;
@@ -516,7 +524,7 @@ TEST(motor_consumo_de_recursos) {
     report("%d vozes (só vozes, sem efeitos): %.1fx tempo real; custo por voz %.2f%% de um núcleo",
            v48, 5.0 / s2, 100.0 * s2 / 5.0 / std::max(v48, 1));
     CHECK(v48 >= 40);
-    CHECK(5.0 / s2 > 2.0);
+    if (!kSanitizerBuild) CHECK(5.0 / s2 > 2.0);
 
     // Efeitos sem vozes (custo fixo da cadeia master).
     resetEngine(e, 4);

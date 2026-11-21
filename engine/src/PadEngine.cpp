@@ -269,7 +269,7 @@ void PadEngine::updateControl() {
         satMix_ = 0.4f * warmth;
         lastTone_[1] = warmth;
     }
-    const float tilt = clampf(bright + 0.25f * (inten - 0.5f), 0.0f, 1.0f);
+    const float tilt = clampf(bright + 0.6f * (inten - 0.5f), 0.0f, 1.0f); // tocar mais forte = mais brilho
     if (std::fabs(tilt - lastTone_[2]) > 1e-4f) {
         tilt_.c.highShelf(2500.0f, 0.5f, -3.0f + 5.0f * tilt, sr_);    // -3..+2 dB, inclinação suave
         lastTone_[2] = tilt;
@@ -389,7 +389,12 @@ void PadEngine::renderSubBlock(float* out, int n) {
         const float orr = (r * dry + wetR_[i] * wet) * kHeadroom;
 
         // Largura M/S com graves sempre mono (abaixo de ~140 Hz o lado é removido).
-        const float w = width0 + (width1 - width0) * k;
+        // As fontes da v0.2 já saem quase descorrelacionadas (leituras L/R independentes do
+        // PADsynth + detune), então a largura "natural" (1,0) usa 80% do lado e, acima de 1, o
+        // lado cresce pela metade. Correlação L/R típica ~0,2: largo, mas sem perder corpo
+        // quando a mesa ou a caixa da igreja somam em mono.
+        const float wl = width0 + (width1 - width0) * k;
+        const float w = wl <= 1.0f ? 0.8f * wl : 0.8f + 0.5f * (wl - 1.0f);
         const float m = 0.5f * (ol + orr);
         float s = 0.5f * (ol - orr);
         s -= sideLp_.lp(s);

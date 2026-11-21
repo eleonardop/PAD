@@ -1,6 +1,21 @@
 // Ferramentas de medição de áudio usadas pelos testes.
 #pragma once
 
+// Verdadeiro quando compilado com AddressSanitizer/UBSan: as verificações de velocidade
+// são puladas (o código instrumentado é várias vezes mais lento), as de áudio não.
+#if defined(__SANITIZE_ADDRESS__)
+#define PAD_SANITIZER_BUILD 1
+#elif defined(__has_feature)
+#if __has_feature(address_sanitizer)
+#define PAD_SANITIZER_BUILD 1
+#endif
+#endif
+#ifdef PAD_SANITIZER_BUILD
+constexpr bool kSanitizerBuild = true;
+#else
+constexpr bool kSanitizerBuild = false;
+#endif
+
 #include <vector>
 #include <complex>
 #include <functional>

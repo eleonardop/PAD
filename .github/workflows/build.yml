@@ -5,6 +5,11 @@ on:
   pull_request:
   workflow_dispatch:
 
+# bash com pipefail: um teste que falha derruba o passo mesmo com "| tee".
+defaults:
+  run:
+    shell: bash
+
 jobs:
   motor:
     name: Motor C++ (x86-64) — testes, sanitizers, WAVs e comparações
