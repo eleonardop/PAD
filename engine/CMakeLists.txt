@@ -10,14 +10,23 @@ set(PAD_ENGINE_SOURCES
     ${CMAKE_CURRENT_LIST_DIR}/src/core/VoiceManager.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/core/Presets.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/core/WavIO.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/src/core/Sources.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/dsp/Wavetable.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/dsp/Reverb.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/src/dsp/PadSynth.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/src/dsp/DattorroPlate.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/src/dsp/CloudReverb.cpp
+    # Cloud Seed Core (MIT, Ghost Note Audio) — ver third_party/README.md
+    ${CMAKE_CURRENT_LIST_DIR}/third_party/cloudseed/DSP/RandomBuffer.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/third_party/cloudseed/DSP/Biquad.cpp
 )
 
 if(NOT TARGET pad_engine)
     add_library(pad_engine STATIC ${PAD_ENGINE_SOURCES})
     target_include_directories(pad_engine PUBLIC ${CMAKE_CURRENT_LIST_DIR}/src)
     target_compile_features(pad_engine PUBLIC cxx_std_17)
+    # Bloco máximo interno do Cloud Seed (o motor chama em sub-blocos de 32 amostras).
+    target_compile_definitions(pad_engine PUBLIC BUFFER_SIZE=256)
     find_package(Threads REQUIRED)
     target_link_libraries(pad_engine PUBLIC Threads::Threads)
     if(MSVC)
@@ -35,10 +44,22 @@ if(NOT ANDROID AND PAD_ENGINE_BUILD_TESTS)
         ${CMAKE_CURRENT_LIST_DIR}/tests/AudioAnalysis.cpp
         ${CMAKE_CURRENT_LIST_DIR}/tests/TestsDsp.cpp
         ${CMAKE_CURRENT_LIST_DIR}/tests/TestsEngine.cpp
+        ${CMAKE_CURRENT_LIST_DIR}/tests/TestsSources.cpp
+        ${CMAKE_CURRENT_LIST_DIR}/tests/TestsEngineV2.cpp
     )
     target_link_libraries(pad_tests PRIVATE pad_engine)
     add_test(NAME pad_tests COMMAND pad_tests)
+    # Os testes leem os samples de <repo>/assets
+    target_compile_definitions(pad_tests PRIVATE PAD_ASSETS_DIR="${CMAKE_CURRENT_LIST_DIR}/../assets")
 
     add_executable(pad_wavgen ${CMAKE_CURRENT_LIST_DIR}/../tools/wavgen/WavGen.cpp)
+
+    # Cenários de comparação (mesmo código compila contra a v0.1 em tools/compare/compare.sh)
+    add_executable(pad_scenarios ${CMAKE_CURRENT_LIST_DIR}/../tools/compare/Scenarios.cpp)
+    target_link_libraries(pad_scenarios PRIVATE pad_engine)
+    target_compile_definitions(pad_scenarios PRIVATE PAD_ASSETS_DIR="${CMAKE_CURRENT_LIST_DIR}/../assets")
     target_link_libraries(pad_wavgen PRIVATE pad_engine)
+    add_executable(pad_reverblab ${CMAKE_CURRENT_LIST_DIR}/../tools/reverblab/ReverbLab.cpp)
+    target_link_libraries(pad_reverblab PRIVATE pad_engine)
+    target_compile_definitions(pad_wavgen PRIVATE PAD_ASSETS_DIR="${CMAKE_CURRENT_LIST_DIR}/../assets")
 endif()

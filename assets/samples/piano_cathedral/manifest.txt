@@ -1,0 +1,18 @@
+# arquivo nota_midi_raiz frequencia_raiz_hz (Salamander Grand Piano V3 por Alexander Holm (CC-BY 3.0); processado pelo PAD Worship)
+pno_045.flac 45 109.7028
+pno_057.flac 57 220.0996
+pno_069.flac 69 440.4317
+pno_081.flac 81 884.1377
+pno_048.flac 48 130.5048
+pno_060.flac 60 261.7730
+pno_072.flac 72 524.7250
+pno_084.flac 84 1050.6951
+pno_051.flac 51 155.3614
+pno_063.flac 63 311.4228
+pno_075.flac 75 623.3377
+pno_087.flac 87 1252.0272
+pno_042.flac 42 92.2326
+pno_054.flac 54 184.6261
+pno_066.flac 66 369.3793
+pno_078.flac 78 741.0020
+pno_090.flac 90 1492.0793

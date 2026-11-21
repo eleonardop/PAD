@@ -18,22 +18,34 @@ enum class ParamId : int32_t {
     // Timbre
     Warmth,        // 0..1  calor: realce de médios-graves + saturação suave + agudos mais redondos
     Brightness,    // 0..1  brilho: abertura dos filtros das vozes + shelf de agudos
-    Air,           // 0..1  "ar": faixa de 10–16 kHz e abertura do ruído afinado da camada Air
+    Air,           // 0..1  abertura da camada Air (passa-baixa 5,5–9 kHz) e parte enviada ao reverb
     Low,           // 0..1  controle de graves do conjunto (0,5 = neutro)
     Width,         // 0..1.5 largura estéreo (0 = mono, 1 = natural)
     Movement,      // 0..1  movimento orgânico (deriva lenta de afinação, filtro, volume e pan)
-    Detune,        // 0..1  desafinação entre osciladores (0 a 14 cents)
+    Detune,        // 0..1  diferença de afinação entre as leituras L e R das fontes (0 a 9 cents): largura viva
     // Espaço
     Reverb,        // 0..1  mixagem do reverb
     ReverbDecay,   // segundos (RT60)
     ReverbSize,    // 0..1
     ReverbDamping, // 0..1 (1 = cauda mais escura)
-    Shimmer,       // 0..1  realimentação de oitava do reverb
+    Shimmer,       // 0..1  realimentação de oitava em volta do reverb
     // Envelope / transições
     Attack,        // segundos
     Release,       // segundos
     CrossfadeTime, // segundos (troca de acorde/tonalidade)
     MasterVolume,  // 0..1
+    // ---- Acrescentados na versão 0.2 (no fim, para manter os ids anteriores)
+    LayerVox,          // 0..1  coral PADsynth ("ah" <-> "oh")
+    LayerTexture,      // 0..1  textura real (piano "Cathedral" ou órgão suave)
+    Chorus,            // 0..1  ensemble de 3 fases no barramento
+    Evolution,         // 0..1  macro: morph de timbre, filtro, respiração e movimento ao longo do tempo
+    Intensity,         // 0..1  dinâmica: abre o filtro, puxa o morph para os timbres abertos, cresce o volume
+    ReverbType,        // 0 = Clássico (FDN v0.1), 1 = Plate (Dattorro), 2 = Cloud (Cloud Seed)
+    PreDelay,          // segundos
+    EarlyReflections,  // 0..1
+    Diffusion,         // 0..1
+    StringsSource,     // 0 = cordas reais (VSCO 2 CE), 1 = cordas sintéticas (v0.1)
+    TextureType,       // 0 = piano "Cathedral", 1 = órgão suave
     Count
 };
 
@@ -70,6 +82,17 @@ inline const ParamInfo& paramInfo(ParamId id) {
         {"release", 0.05f, 30.0f, 4.0f, 0.0f},
         {"crossfade_time", 0.05f, 10.0f, 1.8f, 0.0f},
         {"master_volume", 0.0f, 1.0f, 0.80f, 0.05f},
+        {"layer_vox", 0.0f, 1.0f, 0.0f, 0.05f},
+        {"layer_texture", 0.0f, 1.0f, 0.0f, 0.05f},
+        {"chorus", 0.0f, 1.0f, 0.5f, 0.08f},
+        {"evolution", 0.0f, 1.0f, 0.5f, 0.15f},
+        {"intensity", 0.0f, 1.0f, 0.5f, 0.25f},
+        {"reverb_type", 0.0f, 2.0f, 2.0f, 0.0f},
+        {"pre_delay", 0.0f, 0.12f, 0.03f, 0.10f},
+        {"early_reflections", 0.0f, 1.0f, 0.35f, 0.10f},
+        {"diffusion", 0.0f, 1.0f, 0.75f, 0.10f},
+        {"strings_source", 0.0f, 1.0f, 0.0f, 0.0f},
+        {"texture_type", 0.0f, 1.0f, 0.0f, 0.0f},
     };
     return kInfo[static_cast<int>(id)];
 }

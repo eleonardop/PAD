@@ -24,8 +24,10 @@ void dryConfig(PadEngine& e) {
 }
 
 void soloLayer(PadEngine& e, ParamId layer) {
-    for (ParamId id : {ParamId::LayerWarm, ParamId::LayerAir, ParamId::LayerStrings, ParamId::LayerShimmer, ParamId::LayerLow})
+    for (ParamId id : {ParamId::LayerWarm, ParamId::LayerAir, ParamId::LayerStrings, ParamId::LayerShimmer, ParamId::LayerLow,
+                       ParamId::LayerVox, ParamId::LayerTexture})
         e.setParam(id, id == layer ? 1.0f : 0.0f);
+    e.waitForSources(60.0);
 }
 
 struct LevelRange { double min, max; };
@@ -55,7 +57,9 @@ TEST(motor_inicializacao_e_encerramento) {
     PadEngine& e = sharedEngine();
     CHECK(e.isPrepared());
     CHECK(e.sampleRate() == kSr);
-    report("banco de samples: %zu zonas, %.1f MB", e.sampleBank()->zoneCount(), e.sampleBank()->memoryBytes() / 1e6);
+    const auto st = e.readStats();
+    report("fontes carregadas (bits %x), %.1f MB; falhas: %x", st.sourcesReady, st.sourcesMemoryBytes / 1e6, st.sourcesFailed);
+    CHECK(st.sourcesFailed == 0);
 }
 
 // (2) Reprodução contínua: nível estável, sem cliques, sem NaN.
@@ -196,9 +200,11 @@ TEST(motor_crossfade_nivel_e_picos) {
 // (6) Camadas individuais e simultâneas.
 TEST(motor_camadas_individuais_e_combinadas) {
     PadEngine& e = sharedEngine();
-    struct L { ParamId id; const char* name; double centroid; double rms; };
-    L layers[] = {{ParamId::LayerLow, "Low", 0, 0}, {ParamId::LayerWarm, "Warm", 0, 0}, {ParamId::LayerStrings, "Strings", 0, 0},
-                  {ParamId::LayerShimmer, "Shimmer", 0, 0}, {ParamId::LayerAir, "Air", 0, 0}};
+    struct L { ParamId id; const char* name; double centroid; double rms; double hf; };
+    L layers[] = {{ParamId::LayerLow, "Low", 0, 0, 0},       {ParamId::LayerWarm, "Warm", 0, 0, 0},
+                  {ParamId::LayerStrings, "Strings", 0, 0, 0}, {ParamId::LayerShimmer, "Shimmer", 0, 0, 0},
+                  {ParamId::LayerAir, "Air", 0, 0, 0},        {ParamId::LayerVox, "Vox", 0, 0, 0},
+                  {ParamId::LayerTexture, "Texture", 0, 0, 0}};
     for (L& l : layers) {
         resetEngine(e);
         dryConfig(e);
@@ -209,18 +215,28 @@ TEST(motor_camadas_individuais_e_combinadas) {
         auto m = mono(x);
         l.centroid = spectralCentroid(m, kSr, fr(1.0), 65536);
         l.rms = rmsDb(x, fr(1.0), fr(2.5));
-        report("%-8s RMS %.1f dB, centroide espectral %.0f Hz", l.name, l.rms, l.centroid);
-        CHECK(l.rms > -45.0);
+        auto db = magnitudeSpectrumDb(m, fr(1.0), 65536);
+        double hi = 0, tot = 0;
+        for (size_t k = 1; k < db.size(); ++k) { const double pw = std::pow(10.0, db[k] / 10); tot += pw; if (k * kSr / 65536 > 10000) hi += pw; }
+        l.hf = 10 * std::log10(hi / tot + 1e-30);
+        report("%-8s RMS %.1f dB, centroide %.0f Hz, energia acima de 10 kHz %.1f dB", l.name, l.rms, l.centroid, l.hf);
+        CHECK(l.rms > -50.0);
         CHECK(peakAbs(x) <= kLimit);
     }
     CHECK(layers[0].centroid < 250.0);                   // Low: só graves
     CHECK(layers[0].centroid < layers[1].centroid);      // Low < Warm
     CHECK(layers[3].centroid > layers[1].centroid);      // Shimmer acima do Warm
     CHECK(layers[4].centroid > 1500.0);                  // Air: região aérea
+    // Air corrigido na origem: no mesmo volume de camada fica >= 13 dB abaixo do corpo e sem chiado.
+    report("Air em relação ao Warm (mesmo volume de camada): %.1f dB", layers[4].rms - layers[1].rms);
+    CHECK(layers[4].rms < layers[1].rms - 13.0);
+    CHECK(layers[4].hf < -40.0);
+    for (const L& l : layers) if (l.id != ParamId::LayerStrings) CHECK(l.hf < -40.0); // nenhuma fonte com agudos ásperos
     // Todas juntas
     resetEngine(e);
     dryConfig(e);
-    for (ParamId id : {ParamId::LayerWarm, ParamId::LayerAir, ParamId::LayerStrings, ParamId::LayerShimmer, ParamId::LayerLow}) e.setParam(id, 1.0f);
+    for (const L& l : layers) e.setParam(l.id, 1.0f);
+    e.waitForSources(60.0);
     e.setParam(ParamId::Attack, 0.1f);
     e.playChord(9, ChordType::Pad5);
     auto x = render(e, 2.5);
@@ -266,22 +282,26 @@ namespace {
 Stereo renderVoices(VoiceManager& vm, const RenderContext& ctx, double seconds, const std::function<void(double)>& ev) {
     const size_t frames = fr(seconds);
     Stereo out(frames * 2, 0.0f);
-    float pl[kSubBlock], pr[kSubBlock], sl[kSubBlock], sr[kSubBlock], ll[kSubBlock], lr[kSubBlock];
+    float pl[kSubBlock], pr[kSubBlock], al[kSubBlock], ar[kSubBlock], sl[kSubBlock], sr[kSubBlock], ll[kSubBlock], lr[kSubBlock];
     for (size_t done = 0; done < frames; done += kSubBlock) {
         if (ev) ev(static_cast<double>(done) / kSr);
         const int n = static_cast<int>(std::min<size_t>(kSubBlock, frames - done));
-        for (int i = 0; i < n; ++i) pl[i] = pr[i] = sl[i] = sr[i] = ll[i] = lr[i] = 0.0f;
-        Buses b{pl, pr, sl, sr, ll, lr};
+        for (int i = 0; i < n; ++i) pl[i] = pr[i] = al[i] = ar[i] = sl[i] = sr[i] = ll[i] = lr[i] = 0.0f;
+        Buses b{pl, pr, al, ar, sl, sr, ll, lr};
         g_trackAllocations = true;
         vm.render(ctx, b, n);
         g_trackAllocations = false;
-        for (int i = 0; i < n; ++i) { out[2 * (done + i)] = (pl[i] + ll[i]) * 0.3f; out[2 * (done + i) + 1] = (pr[i] + lr[i]) * 0.3f; }
+        for (int i = 0; i < n; ++i) {
+            out[2 * (done + i)] = (pl[i] + al[i] + sl[i] + ll[i]) * 0.3f;
+            out[2 * (done + i) + 1] = (pr[i] + ar[i] + sr[i] + lr[i]) * 0.3f;
+        }
     }
     return out;
 }
 RenderContext testContext() {
     RenderContext ctx = sharedEngine().contextForTests();
     ctx.layerWarm = 0.8f; ctx.layerAir = 0.3f; ctx.layerStrings = 0.6f; ctx.layerShimmer = 0.3f; ctx.layerLow = 0.5f;
+    ctx.layerVox = 0.4f; ctx.layerTexture = 0.4f; ctx.evolution = 0.5f; ctx.intensity = 0.5f; ctx.warmth = 0.5f;
     ctx.brightness = 0.5f; ctx.air = 0.4f; ctx.movement = 0.4f; ctx.detune = 0.4f;
     return ctx;
 }
@@ -513,8 +533,9 @@ TEST(motor_consumo_de_recursos) {
     render(e, 20.0);
     const double s1 = std::chrono::duration<double>(std::chrono::steady_clock::now() - t1).count();
     report("acorde de 5 notas, preset Warm: %.0fx tempo real (%.2f%% de um núcleo)", 20.0 / s1, 100.0 * s1 / 20.0);
-    report("memória do banco de samples: %.1f MB", e.sampleBank()->memoryBytes() / 1e6);
-    CHECK(e.sampleBank()->memoryBytes() < 40u * 1024u * 1024u);
+    const size_t mem = e.readStats().sourcesMemoryBytes;
+    report("memória das fontes carregadas (preset Warm): %.1f MB", mem / 1e6);
+    CHECK(mem < 200u * 1024u * 1024u);
 }
 
 // (15) Estabilidade em reprodução prolongada (10 minutos simulados, com trocas e presets).

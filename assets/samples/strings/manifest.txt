@@ -1,0 +1,17 @@
+# arquivo nota_midi_raiz frequencia_raiz_hz (VSCO 2 CE, CC0)
+str_047.flac 47 123.3390
+str_036.flac 36 65.4320
+str_050.flac 50 147.0465
+str_040.flac 40 82.1721
+str_053.flac 53 174.4761
+str_043.flac 43 97.7458
+str_059.flac 59 246.9113
+str_062.flac 62 292.9717
+str_055.flac 55 196.0821
+str_069.flac 69 439.1338
+str_083.flac 83 988.4134
+str_072.flac 72 523.5801
+str_086.flac 86 1180.4319
+str_076.flac 76 659.7976
+str_066.flac 66 369.9955
+str_079.flac 79 783.6928

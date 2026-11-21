@@ -117,6 +117,15 @@ void VoiceManager::panic() {
     playing_ = false;
 }
 
+void VoiceManager::countSourceUsage(uint16_t* counts) const {
+    for (int i = 0; i < kSourceCount; ++i) counts[i] = 0;
+    for (const auto& v : voices_) {
+        const uint32_t m = v.sourcesInUse();
+        if (!m) continue;
+        for (int i = 0; i < kSourceCount; ++i) counts[i] = static_cast<uint16_t>(counts[i] + ((m >> i) & 1u));
+    }
+}
+
 void VoiceManager::render(const RenderContext& ctx, Buses& buses, int n) {
     for (auto& vo : voices_) vo.render(ctx, buses, n);
 }

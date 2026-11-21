@@ -8,6 +8,7 @@ namespace padtest {
 pad::PadEngine& sharedEngine() {
     static pad::PadEngine* e = [] {
         auto* p = new pad::PadEngine();
+        p->setAssetProvider(std::make_shared<pad::FileAssetProvider>(PAD_ASSETS_DIR));
         p->prepare(48000.0f);
         return p;
     }();
@@ -21,6 +22,7 @@ void resetEngine(pad::PadEngine& e, int presetIndex) {
         e.setParam(id, pad::paramInfo(id).defaultValue);
     }
     if (presetIndex >= 0) e.applyPreset(presetIndex);
+    e.waitForSources(60.0);
     // Silêncio longo o bastante para esvaziar vozes, cauda do reverb e suavizadores.
     std::vector<float> buf(2 * 512);
     e.setParam(pad::ParamId::Reverb, 0.0f);

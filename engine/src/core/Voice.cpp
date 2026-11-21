@@ -4,26 +4,77 @@ namespace pad {
 
 namespace {
 inline float perSample(float seconds, float sr) { return 1.0f / std::max(seconds * sr, 1.0f); }
+
+// Equilíbrio entre camadas com o volume de camada em 1,0. Todas as fontes chegam normalizadas
+// em -20 dBFS RMS (PADsynth e samples), então estes ganhos definem a mixagem interna.
+constexpr float kWarmGain = 1.00f;
+constexpr float kVoxGain = 0.85f;
+constexpr float kStringsGain = 0.95f;
+constexpr float kTextureGain = 0.85f;
+constexpr float kAirGain = 0.178f;   // -15 dB em relação ao corpo: o Air nunca domina, por construção
+constexpr float kGlassGain = 0.30f;
+constexpr float kLowGain = 0.17f;   // a wavetable do grave tem pico 1 (RMS ~0,7); as demais fontes chegam a RMS 0,1
+constexpr float kAvailRampSeconds = 0.08f;
 }
 
 void Voice::prepare(float sampleRate, uint32_t index) {
     sr_ = sampleRate;
     index_ = index;
     env_.setSampleRate(sampleRate);
-    noise_.setSeed(0xA11CE000ULL + index * 7919ULL);
+    rng_.setSeed(0xA11CE000ULL + index * 7919ULL);
     free();
 }
 
 void Voice::free() {
     state_ = State::Free;
-    zone_ = nullptr;
     lastGain_ = 0.0f;
     lastLowGain_ = 0.0f;
     env_.reset();
+    for (Layer* L : {&warm_, &vox_, &strings_, &texture_, &air_, &glass_}) *L = Layer{};
+}
+
+uint32_t Voice::sourcesInUse() const {
+    if (state_ == State::Free) return 0;
+    uint32_t m = 0;
+    for (const Layer* L : {&warm_, &vox_, &strings_, &texture_, &air_, &glass_}) {
+        if (L->a && L->srcA != SourceId::Count) m |= sourceBit(L->srcA);
+        if (L->b && L->srcB != SourceId::Count) m |= sourceBit(L->srcB);
+    }
+    return m;
+}
+
+bool Voice::acquire(Layer& L, const RenderContext& ctx, SourceId a, SourceId b) {
+    if (!ctx.sources || a == SourceId::Count) return false;
+    const ZoneBank* bankA = ctx.sources->get(a);
+    if (!bankA || bankA->empty()) return false;
+    // Glass é gerado uma oitava acima da nota.
+    const float target = (a == SourceId::Glass) ? f0_ * 2.0f : f0_;
+    double ratio = 1.0;
+    const Zone* za = bankA->nearest(target, ctx.sampleRate, ratio);
+    if (!za || za->length <= 4) return false;
+    const Zone* zb = nullptr;
+    if (b != SourceId::Count) {
+        const ZoneBank* bankB = ctx.sources->get(b);
+        if (bankB) {
+            const Zone* cand = bankB->zoneAt(bankA->indexOf(za));
+            if (cand && cand->length == za->length && cand->rootNote == za->rootNote) zb = cand;
+        }
+    }
+    L.a = za;
+    L.b = zb;
+    L.srcA = a;
+    L.srcB = zb ? b : SourceId::Count;
+    L.ratio = ratio;
+    // Ponto de partida aleatório: notas repetidas nunca começam no mesmo lugar do loop.
+    const uint64_t len = static_cast<uint64_t>(za->length) << 32;
+    L.posL = static_cast<uint64_t>(static_cast<double>(rng_.uniform()) * static_cast<double>(len)) % len;
+    L.posR = za->channels == 2 ? L.posL : (L.posL + len / 2) % len;
+    return true;
 }
 
 void Voice::start(int note, bool isRoot, int lowNote, float noteGain, bool useAttack, float attackSec, float fadeSec,
                   uint64_t age, const RenderContext& ctx) {
+    free();
     note_ = note;
     f0_ = static_cast<float>(midiToHz(note));
     age_ = age;
@@ -33,7 +84,6 @@ void Voice::start(int note, bool isRoot, int lowNote, float noteGain, bool useAt
     stealRate_ = 0.0f;
     lastGain_ = 0.0f;
 
-    env_.reset();
     if (useAttack) {
         env_.startAttack(attackSec);
         fadePos_ = 1.0f;
@@ -44,51 +94,59 @@ void Voice::start(int note, bool isRoot, int lowNote, float noteGain, bool useAt
         fadeRate_ = perSample(fadeSec, sr_);
     }
 
-    // Camada Low
     isRoot_ = isRoot;
     lowNote_ = lowNote;
     lowF0_ = static_cast<float>(midiToHz(lowNote));
     lowPos_ = isRoot ? 1.0f : 0.0f;
     lowRate_ = 0.0f;
     lastLowGain_ = eqPower(lowPos_) * ctx.layerLow;
-    lowOsc_.phase = noise_.uniform();
+    lowOsc_.phase = rng_.uniform();
     if (ctx.tables) lowLevel_ = ctx.tables->low.levelFor(lowF0_);
 
-    // Osciladores com fase aleatória: notas repetidas nunca soam idênticas.
-    for (auto& o : warm_) o.phase = noise_.uniform();
-    for (auto& o : shim_) o.phase = noise_.uniform();
-    if (ctx.tables) {
-        warmLevel_ = ctx.tables->warmA.levelFor(f0_ * 1.02f);
-        shimLevel_[0] = ctx.tables->shimmer.levelFor(f0_ * 2.0f);
-        shimLevel_[1] = ctx.tables->shimmer.levelFor(f0_ * 3.0f);
-    }
-    warmFilter_.reset();
-    lastCutoff_ = -1.0f;
+    // Fontes disponíveis agora entram com a nota (a rampa da própria nota cuida da entrada).
+    // As que ainda estão carregando entram depois com rampa própria (acquireMissing).
+    acquireMissing(ctx);
+    for (Layer* L : {&warm_, &vox_, &strings_, &texture_, &air_, &glass_}) { L->avail = 1.0f; L->lastGain = 0.0f; }
 
-    // Strings: zona mais próxima; os dois canais leem pontos distantes do loop
-    // (estéreo descorrelacionado a partir do mesmo material).
-    zone_ = ctx.bank ? ctx.bank->zoneFor(f0_, ctx.sampleRate, sRatio_) : nullptr;
-    if (zone_) {
-        sPosL_ = noise_.uniform() * zone_->length;
-        sPosR_ = sPosL_ + zone_->length * 0.5;
-        if (sPosR_ >= zone_->length) sPosR_ -= zone_->length;
-    }
+    ladL_.reset(); ladR_.reset(); sampleTone_.reset(); airTone_.reset();
+    lastCutoff_ = lastSampleCut_ = lastAirCut_ = lastDrive_ = -1.0f;
 
-    for (int i = 0; i < 2; ++i) { airL_[i].reset(); airR_[i].reset(); }
-    airCenterKey_ = -1.0f;
-
-    // Moduladores com sementes diferentes a cada nota.
     const uint64_t seed = (static_cast<uint64_t>(index_) << 32) ^ (age * 0x9E3779B97F4A7C15ULL) ^ static_cast<uint64_t>(note);
-    modPitch_.init(seed + 1, 0.11f + 0.09f * noise_.uniform(), ctx.controlRate);
-    modAmp_.init(seed + 2, 0.07f + 0.08f * noise_.uniform(), ctx.controlRate);
-    modCut_.init(seed + 3, 0.05f + 0.07f * noise_.uniform(), ctx.controlRate);
-    modPan_.init(seed + 4, 0.04f + 0.05f * noise_.uniform(), ctx.controlRate);
-    modAir_.init(seed + 5, 0.15f + 0.20f * noise_.uniform(), ctx.controlRate);
+    const float cr = ctx.controlRate;
+    modPitch_.init(seed + 1, 0.10f + 0.08f * rng_.uniform(), cr);
+    modAmp_.init(seed + 2, 0.06f + 0.07f * rng_.uniform(), cr);
+    modCut_.init(seed + 3, 0.05f + 0.06f * rng_.uniform(), cr);
+    modPan_.init(seed + 4, 0.04f + 0.05f * rng_.uniform(), cr);
+    modBreath_.init(seed + 5, 0.06f + 0.10f * rng_.uniform(), cr);
+    morphWarm_.init(seed + 6, 0.03f, cr);
+    morphVox_.init(seed + 7, 0.03f, cr);
+    morphAir_.init(seed + 8, 0.04f, cr);
+    evoCut_.init(seed + 9, 0.025f, cr);
 
     // Pan determinístico por nota (a mesma nota mantém o lugar no panorama).
-    const float pan = 0.32f * std::sin(static_cast<float>(note) * 2.399f); // ângulo áureo
+    const float pan = 0.30f * std::sin(static_cast<float>(note) * 2.399f);
     panL_ = eqPower(0.5f * (1.0f - pan)) * 1.41421356f;
     panR_ = eqPower(0.5f * (1.0f + pan)) * 1.41421356f;
+}
+
+void Voice::acquireMissing(const RenderContext& ctx) {
+    const bool late = lastGain_ > 0.0f;
+    auto tryLayer = [&](Layer& L, float level, SourceId a, SourceId b) {
+        if (L.a || level <= 1e-4f) return;
+        if (acquire(L, ctx, a, b) && late) { L.avail = 0.0f; L.lastGain = 0.0f; }
+    };
+    tryLayer(warm_, ctx.layerWarm, SourceId::WarmDark, SourceId::WarmOpen);
+    tryLayer(vox_, ctx.layerVox, SourceId::VoxOh, SourceId::VoxAh);
+    tryLayer(air_, ctx.layerAir, SourceId::AirA, SourceId::AirB);
+    tryLayer(glass_, ctx.layerShimmer, SourceId::Glass, SourceId::Count);
+    if (!strings_.a && ctx.layerStrings > 1e-4f && ctx.sources) {
+        SourceId pref = ctx.stringsSource == 0 ? SourceId::StringsReal : SourceId::StringsSynth;
+        // Reserva automática: se os samples reais não puderem ser carregados, usa as sintéticas.
+        if (pref == SourceId::StringsReal && ctx.sources->state(pref) == SourceLibrary::State::Failed) pref = SourceId::StringsSynth;
+        tryLayer(strings_, ctx.layerStrings, pref, SourceId::Count);
+    }
+    if (!texture_.a && ctx.layerTexture > 1e-4f)
+        tryLayer(texture_, ctx.layerTexture, ctx.textureType == 0 ? SourceId::PianoCathedral : SourceId::Organ, SourceId::Count);
 }
 
 void Voice::fadeOut(float seconds) {
@@ -130,7 +188,7 @@ void Voice::setRole(bool isRoot, int lowNote, float noteGain, float fadeSec) {
         if (lowPos_ <= 0.0f) {
             lowNote_ = lowNote;
             lowF0_ = static_cast<float>(midiToHz(lowNote));
-            lowOsc_.phase = noise_.uniform();
+            lowOsc_.phase = rng_.uniform();
         }
         lowRate_ = perSample(fadeSec, sr_);
     } else {
@@ -150,119 +208,157 @@ float Voice::computeGain(int n) {
     return e * eqPower(fadePos_) * stealGain_ * noteGain_;
 }
 
+void Voice::renderLayer(Layer& L, float* oL, float* oR, int n, float pitchRatio, float detuneCents, float gain, float morph) {
+    if (!L.a) return;
+    // Rampa de disponibilidade (fonte que chegou depois do início da nota).
+    if (L.avail < 1.0f) L.avail = std::min(1.0f, L.avail + static_cast<float>(n) / (kAvailRampSeconds * sr_));
+    const float g0 = L.lastGain, g1 = gain * L.avail;
+    const float m0 = L.lastMorph, m1 = L.b ? morph : 0.0f;
+    L.lastGain = g1;
+    L.lastMorph = m1;
+    const uint64_t len = static_cast<uint64_t>(L.a->length) << 32;
+    const double scale = 4294967296.0;
+    const uint64_t incL = static_cast<uint64_t>(L.ratio * pitchRatio * static_cast<double>(centsToRatio(-0.5f * detuneCents)) * scale);
+    const uint64_t incR = static_cast<uint64_t>(L.ratio * pitchRatio * static_cast<double>(centsToRatio(0.5f * detuneCents)) * scale);
+    if (g0 <= 1e-7f && g1 <= 1e-7f) {
+        // Mantém a fase andando (sem custo de leitura) para a camada voltar sem salto.
+        L.posL = (L.posL + incL * static_cast<uint64_t>(n)) % len;
+        L.posR = (L.posR + incR * static_cast<uint64_t>(n)) % len;
+        return;
+    }
+    const Zone& A = *L.a;
+    const int16_t* aL = A.l.data() + 1;
+    const int16_t* aR = (A.channels == 2 ? A.r.data() : A.l.data()) + 1;
+    const float sc = A.scale;
+    // Leitura da tabela B só quando ela contribui; nos extremos do morph lê só uma.
+    const bool onlyB = L.b && m0 >= 0.999f && m1 >= 0.999f;
+    const bool useB = L.b && !onlyB && (m0 > 1e-3f || m1 > 1e-3f);
+    const Zone* src = onlyB ? L.b : &A;
+    const int16_t* pL = onlyB ? L.b->l.data() + 1 : aL;
+    const int16_t* pR = onlyB ? (L.b->channels == 2 ? L.b->r.data() : L.b->l.data()) + 1 : aR;
+    const float pScale = src->scale;
+    const int16_t* bL = useB ? L.b->l.data() + 1 : nullptr;
+    const int16_t* bR = useB ? (L.b->channels == 2 ? L.b->r.data() : L.b->l.data()) + 1 : nullptr;
+    const float bScale = useB ? L.b->scale : 0.0f;
+    constexpr float kFrac = 1.0f / 4294967296.0f;
+    const float invN = 1.0f / static_cast<float>(n);
+    uint64_t posL = L.posL, posR = L.posR;
+    for (int i = 0; i < n; ++i) {
+        const float k = static_cast<float>(i + 1) * invN;
+        const float g = g0 + (g1 - g0) * k;
+        const int iL = static_cast<int>(posL >> 32), iR = static_cast<int>(posR >> 32);
+        const float fL = static_cast<float>(posL & 0xffffffffu) * kFrac;
+        const float fR = static_cast<float>(posR & 0xffffffffu) * kFrac;
+        float l = Zone::hermite16(pL + iL, fL) * pScale;
+        float r = Zone::hermite16(pR + iR, fR) * pScale;
+        if (useB) {
+            const float m = m0 + (m1 - m0) * k;
+            l += (Zone::hermite16(bL + iL, fL) * bScale - l) * m;
+            r += (Zone::hermite16(bR + iR, fR) * bScale - r) * m;
+        }
+        (void)sc;
+        oL[i] += l * g;
+        oR[i] += r * g;
+        posL += incL; if (posL >= len) posL -= len;
+        posR += incR; if (posR >= len) posR -= len;
+    }
+    L.posL = posL;
+    L.posR = posR;
+}
+
 void Voice::render(const RenderContext& ctx, Buses& out, int n) {
-    if (state_ == State::Free || !ctx.tables) return;
+    if (state_ == State::Free) return;
+    acquireMissing(ctx);
 
     const float g0 = lastGain_;
     const float g1 = computeGain(n);
     const float mov = ctx.movement;
+    const float evo = ctx.evolution;
+    const float inten = ctx.intensity;
 
-    // Movimento: deriva de afinação (até ±2,2 cents), volume (até ±1,2 dB), filtro (até ±0,5 oitava), pan.
-    const float pitchRatio = centsToRatio(mov * 2.2f * modPitch_.tick());
-    const float ampMod = 1.0f + mov * 0.14f * modAmp_.tick();
-    const float cutMod = std::exp2(mov * 0.5f * modCut_.tick());
-    const float panMod = mov * 0.22f * modPan_.tick();
-    const float breath = 1.0f + mov * 0.35f * modAir_.tick();
+    // ---- Moduladores (taxa de controle)
+    const float pitchRatio = centsToRatio(mov * 2.0f * modPitch_.tick());
+    const float ampMod = 1.0f + mov * 0.10f * modAmp_.tick();
+    const float panMod = mov * 0.20f * modPan_.tick();
+    const float breathRaw = modBreath_.tick();                // -1..1
+    const float breath = 1.0f + evo * 0.16f * breathRaw;     // até ±1,3 dB
+    const float morphRate = 0.017f + 0.05f * evo;            // ciclos de ~60 s (calmo) a ~15 s (vivo)
+    morphWarm_.setRate(morphRate, ctx.controlRate);
+    morphVox_.setRate(morphRate * 0.8f, ctx.controlRate);
+    morphAir_.setRate(morphRate * 1.3f, ctx.controlRate);
+    evoCut_.setRate(morphRate * 0.7f, ctx.controlRate);
+    // O modulador suave fica tipicamente em ±0,5; o fator 1,1 leva o morph a percorrer quase
+    // toda a faixa entre as duas tabelas com Evolução no máximo.
+    // 70% comum ao conjunto + 30% próprio da voz (cada nota ainda respira um pouco diferente).
+    const float gW = 0.7f * ctx.evoMorph + 0.3f * morphWarm_.tick();
+    const float gV = 0.7f * ctx.evoMorph2 + 0.3f * morphVox_.tick();
+    const float gA = 0.7f * ctx.evoMorph2 + 0.3f * morphAir_.tick();
+    const float mWarm = clampf(0.10f + 0.65f * inten + 0.6f * evo * gW, 0.0f, 1.0f);
+    const float mVox = clampf(0.45f + 0.25f * (inten - 0.5f) + 0.6f * evo * gV, 0.0f, 1.0f);
+    const float mAir = clampf(0.5f + 0.6f * evo * gA, 0.0f, 1.0f);
+    const float intensityGain = dbToGain((inten - 0.5f) * 6.0f);
+    const float detuneCents = ctx.detune * 9.0f;
 
-    float tL[kSubBlock], tR[kSubBlock], sL[kSubBlock], sR[kSubBlock];
-    for (int i = 0; i < n; ++i) { tL[i] = tR[i] = sL[i] = sR[i] = 0.0f; }
-    bool anyPad = false, anyShim = false;
-
-    // ---- Warm: 3 osciladores (centro + par desafinado), filtro passa-baixa com key tracking.
-    if (ctx.layerWarm > 1e-4f) {
-        anyPad = true;
-        const float dc = 1.0f + ctx.detune * 13.0f; // cents
-        const float base = f0_ * pitchRatio / sr_;
-        const float inc0 = base;
-        const float inc1 = base * centsToRatio(-dc);
-        const float inc2 = base * centsToRatio(dc * 0.87f);
-        const float b = ctx.brightness;
-        float cutoff = (f0_ * (2.0f + 12.0f * b * b) + 250.0f + 2600.0f * b) * cutMod;
-        cutoff = clampf(cutoff, 120.0f, 16000.0f);
-        if (std::fabs(cutoff - lastCutoff_) > lastCutoff_ * 0.004f) {
-            warmFilter_.c.lowpass(cutoff, 0.55f, sr_);
-            lastCutoff_ = cutoff;
-        }
-        const LayerTables& t = *ctx.tables;
-        const float gw = ctx.layerWarm * 0.55f;
-        for (int i = 0; i < n; ++i) {
-            const float o0 = warm_[0].tick(t.warmA, warmLevel_, inc0);
-            const float o1 = warm_[1].tick(t.warmB, warmLevel_, inc1);
-            const float o2 = warm_[2].tick(t.warmA, warmLevel_, inc2);
-            float l = 0.55f * o0 + 0.75f * o1 + 0.30f * o2;
-            float r = 0.55f * o0 + 0.30f * o1 + 0.75f * o2;
-            warmFilter_.process(l, r);
-            tL[i] += l * gw;
-            tR[i] += r * gw;
-        }
+    // ---- Filtros (recalculados só quando mudam)
+    const float b = clampf(ctx.brightness + 0.3f * (inten - 0.5f), 0.0f, 1.0f);
+    float cutoff = (f0_ * (3.0f + 10.0f * b * b) + 600.0f + 5200.0f * b) *
+                   std::exp2(1.0f * evo * (0.7f * ctx.evoCut + 0.3f * evoCut_.tick()) + 0.35f * mov * modCut_.tick() +
+                             1.4f * (inten - 0.5f)); // Intensidade abre o filtro (±0,7 oitava), como tocar mais forte
+    cutoff = clampf(cutoff, 120.0f, 15000.0f);
+    const float drive = 0.4f + 1.0f * ctx.warmth;
+    if (std::fabs(cutoff - lastCutoff_) > lastCutoff_ * 0.003f || std::fabs(drive - lastDrive_) > 1e-3f) {
+        const float kRes = 0.2f + 0.5f * ctx.warmth;
+        ladL_.setCoefficients(cutoff, kRes, sr_); ladR_.setCoefficients(cutoff, kRes, sr_);
+        ladL_.setDrive(drive); ladR_.setDrive(drive);
+        lastCutoff_ = cutoff;
+        lastDrive_ = drive;
+    }
+    const float sampleCut = clampf(cutoff * 2.5f + 1500.0f, 1500.0f, 18000.0f);
+    if (std::fabs(sampleCut - lastSampleCut_) > lastSampleCut_ * 0.003f) {
+        sampleTone_.c.lowpass(sampleCut, 0.6f, sr_);
+        lastSampleCut_ = sampleCut;
+    }
+    const float airCut = 5500.0f + 3500.0f * ctx.air;
+    if (std::fabs(airCut - lastAirCut_) > 1.0f) {
+        airTone_.c.lowpass(airCut, 0.6f, sr_);
+        lastAirCut_ = airCut;
     }
 
-    // ---- Strings / Texture: sample com interpolação Hermite, duas cabeças de leitura.
-    if (ctx.layerStrings > 1e-4f && zone_) {
-        anyPad = true;
-        const double inc = sRatio_ * pitchRatio;
-        const double len = zone_->length;
-        const float gs = ctx.layerStrings * 1.8f;
-        const float gl = gs * (1.0f - panMod), gr = gs * (1.0f + panMod);
-        for (int i = 0; i < n; ++i) {
-            tL[i] += zone_->read(sPosL_) * gl;
-            tR[i] += zone_->read(sPosR_) * gr;
-            sPosL_ += inc; if (sPosL_ >= len) sPosL_ -= len;
-            sPosR_ += inc; if (sPosR_ >= len) sPosR_ -= len;
-        }
-    }
+    float bL[kSubBlock], bR[kSubBlock], sL[kSubBlock], sR[kSubBlock], aL[kSubBlock], aR[kSubBlock], gL[kSubBlock], gR[kSubBlock];
+    for (int i = 0; i < n; ++i) bL[i] = bR[i] = sL[i] = sR[i] = aL[i] = aR[i] = gL[i] = gR[i] = 0.0f;
 
-    // ---- Air: ruído estéreo filtrado em dois harmônicos da nota (ar afinado, não chiado).
-    if (ctx.layerAir > 1e-4f) {
-        anyPad = true;
-        const float targetHz = 1600.0f + 3800.0f * ctx.air;
-        float h1 = std::max(2.0f, std::round(targetHz / f0_));
-        if (h1 != airCenterKey_) {
-            const float h2 = std::max(h1 + 1.0f, std::round(h1 * 1.5f));
-            const float c1 = std::min(h1 * f0_, sr_ * 0.4f);
-            const float c2 = std::min(h2 * f0_, sr_ * 0.42f);
-            airC_[0].bandpass(c1, 9.0f, sr_);
-            airC_[1].bandpass(c2, 7.0f, sr_);
-            airCenterKey_ = h1;
-        }
-        const float ga = ctx.layerAir * 2.6f * breath;
-        for (int i = 0; i < n; ++i) {
-            const float nl = noise_.bipolar();
-            const float nr = noise_.bipolar();
-            const float l = airL_[0].process(airC_[0], nl) + 0.6f * airL_[1].process(airC_[1], nl);
-            const float r = airR_[0].process(airC_[0], nr) + 0.6f * airR_[1].process(airC_[1], nr);
-            tL[i] += l * ga;
-            tR[i] += r * ga;
-        }
-    }
+    // ---- Corpo sintetizado (Warm + Vox) -> ladder
+    renderLayer(warm_, bL, bR, n, pitchRatio, detuneCents, ctx.layerWarm * kWarmGain * breath, mWarm);
+    renderLayer(vox_, bL, bR, n, pitchRatio, detuneCents, ctx.layerVox * kVoxGain * (2.0f - breath), mVox);
+    const bool anyBody = warm_.a || vox_.a;
+    if (anyBody) for (int i = 0; i < n; ++i) { bL[i] = ladL_.process(bL[i]); bR[i] = ladR_.process(bR[i]); }
 
-    // ---- Shimmer: oitava e 12ª (harmônicos 2 e 3) quase senoidais, levemente desafinados.
-    if (ctx.layerShimmer > 1e-4f) {
-        anyShim = true;
-        const float inc0 = 2.0f * f0_ * pitchRatio * centsToRatio(1.5f) / sr_;
-        const float inc1 = 3.0f * f0_ * pitchRatio * centsToRatio(-1.2f) / sr_;
-        const float g1s = (3.0f * f0_ < 7000.0f) ? 1.0f : 0.0f;
-        const float gsh = ctx.layerShimmer * 0.32f * breath;
-        const LayerTables& t = *ctx.tables;
-        for (int i = 0; i < n; ++i) {
-            const float a = shim_[0].tick(t.shimmer, shimLevel_[0], inc0);
-            const float c = shim_[1].tick(t.shimmer, shimLevel_[1], inc1) * g1s;
-            sL[i] = (0.80f * a + 0.30f * c) * gsh;
-            sR[i] = (0.45f * a + 0.70f * c) * gsh;
-        }
-    }
+    // ---- Samples reais (Strings + Texture) -> passa-baixa suave
+    renderLayer(strings_, sL, sR, n, pitchRatio, detuneCents, ctx.layerStrings * kStringsGain, 0.0f);
+    renderLayer(texture_, sL, sR, n, pitchRatio, detuneCents, ctx.layerTexture * kTextureGain * breath, 0.0f);
+    const bool anySample = strings_.a || texture_.a;
+    if (anySample) for (int i = 0; i < n; ++i) sampleTone_.process(sL[i], sR[i]);
 
-    // ---- Soma nos barramentos com a rampa de ganho do sub-bloco.
+    // ---- Air harmônico -> passa-baixa 12 dB/oitava. Respira mais que o corpo (±2,4 dB).
+    renderLayer(air_, aL, aR, n, pitchRatio, detuneCents * 1.5f, ctx.layerAir * kAirGain * (1.0f + evo * 0.3f * breathRaw), mAir);
+    if (air_.a) for (int i = 0; i < n; ++i) airTone_.process(aL[i], aR[i]);
+
+    // ---- Glass (shimmer)
+    renderLayer(glass_, gL, gR, n, pitchRatio, detuneCents, ctx.layerShimmer * kGlassGain * breath, 0.0f);
+
+    // ---- Soma nos barramentos com a rampa de ganho da voz
     const float invN = 1.0f / static_cast<float>(n);
-    if (anyPad || anyShim) {
-        const float pl = panL_ * ampMod, pr = panR_ * ampMod;
+    const float pl = panL_ * ampMod * intensityGain * (1.0f - panMod), pr = panR_ * ampMod * intensityGain * (1.0f + panMod);
+    if (anyBody || anySample || air_.a || glass_.a) {
         for (int i = 0; i < n; ++i) {
             const float g = g0 + (g1 - g0) * (static_cast<float>(i + 1) * invN);
-            const float l = (tL[i] + sL[i]) * g * pl;
-            const float r = (tR[i] + sR[i]) * g * pr;
-            out.padL[i] += l;
-            out.padR[i] += r;
-            if (anyShim) { out.shimL[i] += sL[i] * g * pl; out.shimR[i] += sR[i] * g * pr; }
+            const float gl = g * pl, gr = g * pr;
+            out.padL[i] += (bL[i] + sL[i]) * gl;
+            out.padR[i] += (bR[i] + sR[i]) * gr;
+            out.airL[i] += aL[i] * gl;
+            out.airR[i] += aR[i] * gr;
+            out.shimL[i] += gL[i] * gl;
+            out.shimR[i] += gR[i] * gr;
         }
     }
 
@@ -274,13 +370,13 @@ void Voice::render(const RenderContext& ctx, Buses& out, int n) {
     }
     const float lg0 = lastLowGain_;
     const float lg1 = eqPower(lowPos_) * ctx.layerLow;
-    if (lg0 > 1e-6f || lg1 > 1e-6f) {
+    if ((lg0 > 1e-6f || lg1 > 1e-6f) && ctx.tables) {
         const float inc = lowF0_ * std::sqrt(pitchRatio) / sr_;
-        const LayerTables& t = *ctx.tables;
+        const float li = intensityGain * kLowGain;
         for (int i = 0; i < n; ++i) {
             const float k = static_cast<float>(i + 1) * invN;
-            const float g = (g0 + (g1 - g0) * k) * (lg0 + (lg1 - lg0) * k) * 0.75f;
-            const float y = lowOsc_.tick(t.low, lowLevel_, inc) * g;
+            const float g = (g0 + (g1 - g0) * k) * (lg0 + (lg1 - lg0) * k) * li;
+            const float y = lowOsc_.tick(ctx.tables->low, lowLevel_, inc) * g;
             out.lowL[i] += y;
             out.lowR[i] += y;
         }
@@ -288,7 +384,6 @@ void Voice::render(const RenderContext& ctx, Buses& out, int n) {
     lastLowGain_ = lg1;
     lastGain_ = g1;
 
-    // Libera a voz só depois que a rampa chegou a zero dentro deste sub-bloco.
     const bool done = (state_ == State::Releasing && env_.isIdle()) ||
                       (state_ == State::FadingOut && fadePos_ <= 0.0f) ||
                       (state_ == State::Stealing && stealGain_ <= 0.0f) ||

@@ -1,0 +1,18 @@
+# arquivo nota_midi_raiz frequencia_raiz_hz (VCSL Pipe Organ, manual quieto, CC0)
+org_045.flac 45 110.0173
+org_057.flac 57 220.3937
+org_069.flac 69 439.1699
+org_081.flac 81 879.9270
+org_048.flac 48 130.7327
+org_060.flac 60 261.9913
+org_072.flac 72 522.1385
+org_084.flac 84 1044.4798
+org_051.flac 51 155.7354
+org_063.flac 63 311.1673
+org_075.flac 75 621.1520
+org_087.flac 87 1238.4409
+org_042.flac 42 92.2743
+org_054.flac 54 185.5787
+org_066.flac 66 370.0642
+org_078.flac 78 739.8158
+org_090.flac 90 1476.6657

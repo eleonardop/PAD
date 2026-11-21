@@ -1,11 +1,18 @@
 #include "PadEngine.h"
+#include "dsp/ClassicReverb.h"
+#include "dsp/DattorroPlate.h"
+#include "dsp/CloudReverb.h"
 #include <chrono>
+#include <thread>
 
 namespace pad {
 
 namespace {
-constexpr float kHeadroom = 0.55f;          // ganho interno antes do limitador (~-5,2 dB)
+constexpr float kHeadroom = 1.70f;          // ganho interno antes do compressor e do limitador
 constexpr float kLimiterThreshold = 0.891f; // -1 dBFS
+constexpr float kAirDirect = 0.6f;          // parte do Air que vai direto; o resto aparece só no espaço
+constexpr float kShimmerFeedback = 0.30f;   // realimentação máxima do shimmer (Shimmer = 1)
+constexpr float kReverbSwitchSeconds = 0.35f;
 
 void atomicMax(std::atomic<float>& a, float v) {
     float cur = a.load(std::memory_order_relaxed);
@@ -21,34 +28,25 @@ PadEngine::PadEngine() {
     for (int i = 0; i < kParamCount; ++i) params_[static_cast<size_t>(i)].store(paramInfo(static_cast<ParamId>(i)).defaultValue);
 }
 
-PadEngine::~PadEngine() {
-    delete pendingBank_.exchange(nullptr);
-    delete retiredBank_.exchange(nullptr);
-}
+PadEngine::~PadEngine() { sources_.stop(); }
 
-bool PadEngine::prepare(float sampleRate) {
+bool PadEngine::prepare(float sampleRate, double waitSeconds) {
     if (sampleRate < 8000.0f || sampleRate > 192000.0f) return false;
     prepared_.store(false, std::memory_order_release);
     sr_ = sampleRate;
 
-    // Wavetables (aditivas, limitadas em banda para esta taxa).
-    auto tables = std::make_unique<LayerTables>();
-    tables->warmA.build([](int h) { return 1.0f / std::pow(static_cast<float>(h), 1.05f); }, sr_, 11, true);
-    tables->warmB.build([](int h) { return ((h & 1) ? 1.0f : 0.35f) / std::pow(static_cast<float>(h), 1.05f); }, sr_, 23, true);
-    tables->shimmer.build([](int h) { return h == 1 ? 1.0f : h == 2 ? 0.18f : h == 3 ? 0.06f : h == 4 ? 0.02f : 0.0f; }, sr_, 37, false);
-    tables->low.build([](int h) { return h == 1 ? 1.0f : h == 2 ? 0.30f : h == 3 ? 0.10f : h == 4 ? 0.03f : 0.0f; }, sr_, 41, false);
-    tables_ = std::move(tables);
+    sources_.configure(sr_, assets_);
+    sources_.start();
 
-    // Banco de textura de cordas.
-    auto bank = std::make_unique<SampleBank>();
-    bank->bakeStringTexture(sr_);
-    bank_ = std::move(bank);
+    auto tables = std::make_unique<LayerTables>();
+    tables->low.build([](int h) { return h == 1 ? 1.0f : h == 2 ? 0.22f : h == 3 ? 0.06f : 0.0f; }, sr_, 41, false);
+    tables_ = std::move(tables);
 
     ctx_ = RenderContext{};
     ctx_.sampleRate = sr_;
     ctx_.controlRate = sr_ / kSubBlock;
     ctx_.tables = tables_.get();
-    ctx_.bank = bank_.get();
+    ctx_.sources = &sources_;
 
     voices_.prepare(sr_);
 
@@ -61,23 +59,71 @@ bool PadEngine::prepare(float sampleRate) {
     padHp_.c.highpass(70.0f, 0.707f, sr_);
     lowLp_.c.lowpass(260.0f, 0.707f, sr_);
     lowHp_.c.highpass(28.0f, 0.707f, sr_);
-    padHp_.reset(); lowLp_.reset(); lowHp_.reset();
+    sendHp_.c.highpass(180.0f, 0.707f, sr_);
+    sendLp_.c.lowpass(7500.0f, 0.707f, sr_);
+    for (SvfStereo* f : {&padHp_, &lowLp_, &lowHp_, &lowShelf_, &warmBell_, &warmHighCut_, &tilt_, &sendHp_, &sendLp_}) f->reset();
     dcL_.setLowpass(8.0f, sr_); dcR_.setLowpass(8.0f, sr_); dcL_.reset(); dcR_.reset();
-    lowShelf_.reset(); warmBell_.reset(); warmHighCut_.reset(); brightShelf_.reset(); airShelf_.reset();
+    sideLp_.setLowpass(140.0f, sr_); sideLp_.reset();
     for (float& t : lastTone_) t = -1.0f;
 
-    reverb_.prepare(sr_);
+    ensemble_.prepare(sr_);
+    shimmer_.prepare(sr_);
+    reverbs_[0].reverb = std::make_unique<ClassicReverb>();
+    reverbs_[1].reverb = std::make_unique<DattorroPlate>();
+    reverbs_[2].reverb = std::make_unique<CloudReverb>();
+    for (auto& s : reverbs_) { s.reverb->prepare(sr_); s.gain = 0.0f; s.running = false; s.quietBlocks = 0; }
+    activeReverb_ = -1;
+    glue_.prepare(sr_, kSubBlock);
+    glue_.setThresholdDb(-17.0f);
+    glue_.setRatio(1.6f);
     limiter_.prepare(sr_, 3.0f, 180.0f);
     limiter_.setThreshold(kLimiterThreshold);
 
-    // Esvazia comandos antigos.
     Command c;
     while (commands_.pop(c)) {}
 
     updateControl();
-    dryGain_ = 1.0f; wetGain_ = 0.0f;
+    // Começa já com o reverb do preset ativo (sem rampa) e os ganhos nos valores atuais.
+    if (activeReverb_ >= 0) reverbs_[static_cast<size_t>(activeReverb_)].gain = 1.0f;
+    dryGain_ = 1.0f; wetGain_ = 0.0f; chorus_ = smooth_[static_cast<int>(ParamId::Chorus)].value();
+
+    refreshWanted();
+    waitForSources(waitSeconds);
     prepared_.store(true, std::memory_order_release);
     return true;
+}
+
+// ----------------------------------------------------------------------------- fontes
+
+uint32_t PadEngine::wantedMask() const {
+    auto P = [&](ParamId id) { return params_[static_cast<size_t>(id)].load(std::memory_order_relaxed); };
+    uint32_t m = 0;
+    if (P(ParamId::LayerWarm) > 1e-4f) m |= sourceBit(SourceId::WarmDark) | sourceBit(SourceId::WarmOpen);
+    if (P(ParamId::LayerVox) > 1e-4f) m |= sourceBit(SourceId::VoxAh) | sourceBit(SourceId::VoxOh);
+    if (P(ParamId::LayerAir) > 1e-4f) m |= sourceBit(SourceId::AirA) | sourceBit(SourceId::AirB);
+    if (P(ParamId::LayerShimmer) > 1e-4f) m |= sourceBit(SourceId::Glass);
+    if (P(ParamId::LayerStrings) > 1e-4f) {
+        if (P(ParamId::StringsSource) < 0.5f) {
+            m |= sourceBit(SourceId::StringsReal);
+            // Se os samples reais falharam (assets ausentes), a reserva sintética é carregada.
+            if (sources_.state(SourceId::StringsReal) == SourceLibrary::State::Failed) m |= sourceBit(SourceId::StringsSynth);
+        } else {
+            m |= sourceBit(SourceId::StringsSynth);
+        }
+    }
+    if (P(ParamId::LayerTexture) > 1e-4f) m |= sourceBit(P(ParamId::TextureType) < 0.5f ? SourceId::PianoCathedral : SourceId::Organ);
+    return m;
+}
+
+void PadEngine::refreshWanted() { sources_.setWanted(wantedMask()); }
+
+bool PadEngine::waitForSources(double timeoutSeconds) {
+    refreshWanted();
+    bool ok = sources_.waitReady(wantedMask(), timeoutSeconds);
+    // Uma fonte real pode ter falhado agora e exigir a reserva: pede de novo e espera.
+    refreshWanted();
+    ok = sources_.waitReady(wantedMask(), timeoutSeconds) && ok;
+    return ok;
 }
 
 // ----------------------------------------------------------------------------- controle
@@ -106,6 +152,13 @@ void PadEngine::setParam(ParamId id, float value) {
     const ParamInfo& info = paramInfo(id);
     if (!std::isfinite(value)) return;
     params_[static_cast<size_t>(i)].store(clampf(value, info.minValue, info.maxValue), std::memory_order_relaxed);
+    switch (id) {
+        case ParamId::LayerWarm: case ParamId::LayerVox: case ParamId::LayerAir: case ParamId::LayerShimmer:
+        case ParamId::LayerStrings: case ParamId::LayerTexture: case ParamId::StringsSource: case ParamId::TextureType:
+            refreshWanted();
+            break;
+        default: break;
+    }
 }
 
 float PadEngine::getParam(ParamId id) const {
@@ -118,16 +171,12 @@ void PadEngine::applyPreset(int index) {
     const Preset& p = preset(index);
     for (int i = 0; i < kParamCount; ++i) {
         if (static_cast<ParamId>(i) == ParamId::MasterVolume) continue; // o volume é do operador
-        setParam(static_cast<ParamId>(i), p.values[i]);
+        const ParamInfo& info = paramInfo(static_cast<ParamId>(i));
+        params_[static_cast<size_t>(i)].store(clampf(p.values[i], info.minValue, info.maxValue), std::memory_order_relaxed);
     }
+    presetTrim_.store(dbToGain(p.trimDb), std::memory_order_relaxed);
+    refreshWanted();
 }
-
-void PadEngine::replaceSampleBank(std::unique_ptr<SampleBank> bank) {
-    collectGarbage();
-    delete pendingBank_.exchange(bank.release());
-}
-
-void PadEngine::collectGarbage() { delete retiredBank_.exchange(nullptr, std::memory_order_acq_rel); }
 
 EngineStats PadEngine::readStats() {
     EngineStats s;
@@ -137,10 +186,14 @@ EngineStats PadEngine::readStats() {
     s.droppedCommands = statDropped_.load(std::memory_order_relaxed);
     s.limiterMinGain = statLimiter_.exchange(1.0f, std::memory_order_relaxed);
     s.peakOut = statPeak_.exchange(0.0f, std::memory_order_relaxed);
+    s.glueMaxReductionDb = statGlue_.exchange(0.0f, std::memory_order_relaxed);
     s.load = statLoad_.load(std::memory_order_relaxed);
     s.currentKey = uiKey_.load();
     s.currentChord = uiChord_.load();
     s.playing = statPlaying_.load(std::memory_order_relaxed);
+    s.sourcesReady = sources_.readyMask();
+    s.sourcesFailed = sources_.failedMask();
+    s.sourcesMemoryBytes = sources_.memoryBytes();
     return s;
 }
 
@@ -171,96 +224,182 @@ void PadEngine::updateControl() {
     auto P = [&](ParamId id) { return v[static_cast<int>(id)]; };
 
     ctx_.layerWarm = P(ParamId::LayerWarm);
-    ctx_.layerAir = P(ParamId::LayerAir);
+    ctx_.layerVox = P(ParamId::LayerVox);
     ctx_.layerStrings = P(ParamId::LayerStrings);
+    ctx_.layerTexture = P(ParamId::LayerTexture);
+    ctx_.layerAir = P(ParamId::LayerAir);
     ctx_.layerShimmer = P(ParamId::LayerShimmer);
     ctx_.layerLow = P(ParamId::LayerLow);
     ctx_.brightness = P(ParamId::Brightness);
+    ctx_.warmth = P(ParamId::Warmth);
     ctx_.air = P(ParamId::Air);
     ctx_.movement = P(ParamId::Movement);
     ctx_.detune = P(ParamId::Detune);
+    ctx_.evolution = P(ParamId::Evolution);
+    {
+        const double rate = 0.017 + 0.05 * ctx_.evolution; // ciclos de ~60 s (calmo) a ~15 s (vivo)
+        const double inc = rate / ctx_.controlRate;
+        auto wave = [&](int i, double mul) {
+            double& a = evoPhase_[i];
+            double& b = evoPhase_[i + 3];
+            a += inc * mul;            a -= std::floor(a);
+            b += inc * mul * 1.618034; b -= std::floor(b);
+            return static_cast<float>(0.65 * std::sin(2.0 * M_PI * a) + 0.35 * std::sin(2.0 * M_PI * b));
+        };
+        ctx_.evoMorph = wave(0, 1.0);
+        ctx_.evoMorph2 = wave(1, 1.27);
+        ctx_.evoCut = wave(2, 0.71);
+    }
+    ctx_.intensity = P(ParamId::Intensity);
+    ctx_.stringsSource = P(ParamId::StringsSource) < 0.5f ? 0 : 1;
+    ctx_.textureType = P(ParamId::TextureType) < 0.5f ? 0 : 1;
 
-    // Filtros de tom: recalcula só quando o valor muda.
-    const float low = P(ParamId::Low), warmth = P(ParamId::Warmth), bright = P(ParamId::Brightness), air = P(ParamId::Air);
-    const float tone[6] = {low, warmth, bright, air, 0, 0};
-    if (std::fabs(tone[0] - lastTone_[0]) > 1e-4f) {
+    // Tom do conjunto (recalcula só quando o valor muda).
+    const float low = P(ParamId::Low), warmth = P(ParamId::Warmth), bright = P(ParamId::Brightness), inten = P(ParamId::Intensity);
+    if (std::fabs(low - lastTone_[0]) > 1e-4f) {
         const float db = low < 0.5f ? (low - 0.5f) * 24.0f : (low - 0.5f) * 10.0f; // -12..+5 dB
         lowShelf_.c.lowShelf(140.0f, 0.7f, db, sr_);
-        lastTone_[0] = tone[0];
+        lastTone_[0] = low;
     }
-    if (std::fabs(tone[1] - lastTone_[1]) > 1e-4f) {
-        warmBell_.c.bell(320.0f, 0.8f, warmth * 4.0f - 0.5f, sr_);      // -0,5..+3,5 dB
-        warmHighCut_.c.highShelf(6500.0f, 0.7f, -warmth * 4.0f, sr_);   //  0..-4 dB
-        satDrive_ = 1.0f + 1.8f * warmth;
-        satMix_ = 0.6f * warmth;
-        lastTone_[1] = tone[1];
+    if (std::fabs(warmth - lastTone_[1]) > 1e-4f) {
+        warmBell_.c.bell(300.0f, 0.8f, warmth * 3.0f - 0.5f, sr_);     // -0,5..+2,5 dB
+        warmHighCut_.c.highShelf(6500.0f, 0.7f, -warmth * 3.0f, sr_);  //  0..-3 dB
+        satDrive_ = 1.0f + 1.5f * warmth;
+        satMix_ = 0.4f * warmth;
+        lastTone_[1] = warmth;
     }
-    if (std::fabs(tone[2] - lastTone_[2]) > 1e-4f) {
-        brightShelf_.c.highShelf(3000.0f, 0.6f, -7.0f + 12.0f * bright, sr_); // -7..+5 dB
-        lastTone_[2] = tone[2];
-    }
-    if (std::fabs(tone[3] - lastTone_[3]) > 1e-4f) {
-        airShelf_.c.highShelf(11000.0f, 0.6f, -2.0f + 6.0f * air, sr_);      // -2..+4 dB
-        lastTone_[3] = tone[3];
+    const float tilt = clampf(bright + 0.25f * (inten - 0.5f), 0.0f, 1.0f);
+    if (std::fabs(tilt - lastTone_[2]) > 1e-4f) {
+        tilt_.c.highShelf(2500.0f, 0.5f, -3.0f + 5.0f * tilt, sr_);    // -3..+2 dB, inclinação suave
+        lastTone_[2] = tilt;
     }
 
-    reverb_.setParams(P(ParamId::ReverbDecay), P(ParamId::ReverbSize), P(ParamId::ReverbDamping), P(ParamId::Shimmer));
+    // Espaço
+    ReverbParams rp;
+    rp.decaySeconds = P(ParamId::ReverbDecay);
+    rp.size = P(ParamId::ReverbSize);
+    rp.damping = P(ParamId::ReverbDamping);
+    rp.diffusion = P(ParamId::Diffusion);
+    rp.preDelaySeconds = P(ParamId::PreDelay);
+    rp.early = P(ParamId::EarlyReflections);
+    rp.modulation = 0.35f + 0.4f * P(ParamId::Movement);
+    const int type = static_cast<int>(clampf(std::round(params_[static_cast<int>(ParamId::ReverbType)].load()), 0.0f, 2.0f));
+    if (type != activeReverb_) {
+        activeReverb_ = type;
+        reverbs_[static_cast<size_t>(type)].running = true;
+        reverbs_[static_cast<size_t>(type)].quietBlocks = 0;
+    }
+    for (auto& s : reverbs_) if (s.running) s.reverb->setParams(rp);
 }
 
 void PadEngine::renderSubBlock(float* out, int n) {
-    for (int i = 0; i < n; ++i) padL_[i] = padR_[i] = shimL_[i] = shimR_[i] = lowL_[i] = lowR_[i] = 0.0f;
-    Buses buses{padL_.data(), padR_.data(), shimL_.data(), shimR_.data(), lowL_.data(), lowR_.data()};
+    for (int i = 0; i < n; ++i)
+        padL_[i] = padR_[i] = airL_[i] = airR_[i] = shimL_[i] = shimR_[i] = lowL_[i] = lowR_[i] = wetL_[i] = wetR_[i] = 0.0f;
+    Buses buses{padL_.data(), padR_.data(), airL_.data(), airR_.data(), shimL_.data(), shimR_.data(), lowL_.data(), lowR_.data()};
     voices_.render(ctx_, buses, n);
 
-    // Ganhos de saída interpolados por amostra (sem zipper).
+    const float invN = 1.0f / static_cast<float>(n);
+
+    // ---- Corpo: passa-alta (espaço para baixo e bumbo) + ensemble de 3 fases
+    const float c0 = chorus_, c1 = smooth_[static_cast<int>(ParamId::Chorus)].value();
+    for (int i = 0; i < n; ++i) {
+        float l = padL_[i], r = padR_[i];
+        padHp_.process(l, r);
+        float el = 0.0f, er = 0.0f;
+        ensemble_.process(l, r, el, er);
+        const float c = c0 + (c1 - c0) * static_cast<float>(i + 1) * invN;
+        // Mistura de potência constante entre seco e ensemble (sinais pouco correlacionados).
+        const float dry = 1.0f - 0.35f * c, wet = 0.75f * c;
+        padL_[i] = l * dry + el * wet;
+        padR_[i] = r * dry + er * wet;
+    }
+    chorus_ = c1;
+
+    // ---- Envio do reverb: corpo + Air (inteiro) + Shimmer + um pouco de grave, filtrado
+    const float shimmer = smooth_[static_cast<int>(ParamId::Shimmer)].value();
+    const float shimSend = 0.6f + 0.8f * shimmer;
+    for (int i = 0; i < n; ++i) {
+        float lo = lowHp_.l.process(lowHp_.c, lowL_[i]);
+        lo = lowLp_.l.process(lowLp_.c, lo);
+        lowL_[i] = lo;
+        float sl = padL_[i] + airL_[i] + shimL_[i] * shimSend + lo * 0.1f;
+        float sr = padR_[i] + airR_[i] + shimR_[i] * shimSend + lo * 0.1f;
+        sendHp_.process(sl, sr);
+        sendLp_.process(sl, sr);
+        sendL_[i] = sl;
+        sendR_[i] = sr;
+    }
+    shimmer_.addToSend(sendL_.data(), sendR_.data(), n, shimmer * kShimmerFeedback);
+
+    // ---- Reverbs (o ativo recebe o envio; os outros terminam a cauda e saem em rampa)
+    const float step = static_cast<float>(n) / (kReverbSwitchSeconds * sr_);
+    for (int k = 0; k < static_cast<int>(ReverbType::Count); ++k) {
+        ReverbSlot& s = reverbs_[static_cast<size_t>(k)];
+        if (!s.running) continue;
+        const bool active = (k == activeReverb_);
+        const float g0 = s.gain;
+        const float g1 = active ? std::min(1.0f, g0 + step) : std::max(0.0f, g0 - step);
+        s.gain = g1;
+        s.reverb->process(active ? sendL_.data() : zero_.data(), active ? sendR_.data() : zero_.data(), tmpL_.data(), tmpR_.data(), n);
+        float e = 0.0f;
+        for (int i = 0; i < n; ++i) {
+            const float g = g0 + (g1 - g0) * static_cast<float>(i + 1) * invN;
+            wetL_[i] += tmpL_[i] * g;
+            wetR_[i] += tmpR_[i] * g;
+            e += tmpL_[i] * tmpL_[i] + tmpR_[i] * tmpR_[i];
+        }
+        if (!active && g1 <= 0.0f) {
+            // Continua com entrada zero até a cauda ficar abaixo de -100 dB por ~0,5 s,
+            // assim os buffers estão limpos se este reverb for escolhido de novo.
+            s.quietBlocks = (e < 1e-10f * n) ? s.quietBlocks + 1 : 0;
+            if (s.quietBlocks > static_cast<int>(0.5f * sr_ / kSubBlock)) s.running = false;
+        }
+    }
+    shimmer_.storeWet(wetL_.data(), wetR_.data(), n);
+
+    // ---- Mistura final
     const float rv = smooth_[static_cast<int>(ParamId::Reverb)].value();
-    const float dry1 = 1.0f - 0.35f * rv;
-    const float wet1 = 1.25f * rv;
+    const float dry1 = 1.0f - 0.3f * rv;
+    const float wet1 = 1.3f * rv;
     const float width1 = smooth_[static_cast<int>(ParamId::Width)].value();
     const float mv = smooth_[static_cast<int>(ParamId::MasterVolume)].value();
-    const float master1 = mv * mv * kHeadroom;
-    const float shimSend = 0.6f + 0.8f * smooth_[static_cast<int>(ParamId::Shimmer)].value();
+    const float master1 = mv * mv * presetTrim_.load(std::memory_order_relaxed);
     const float dry0 = dryGain_, wet0 = wetGain_, width0 = width_, master0 = master_;
-    const float invN = 1.0f / static_cast<float>(n);
     float peak = 0.0f;
 
     for (int i = 0; i < n; ++i) {
         const float k = static_cast<float>(i + 1) * invN;
-        float l = padL_[i], r = padR_[i];
-        padHp_.process(l, r); // abre espaço para baixo e bumbo
-        float lo = lowL_[i];
-        lo = lowHp_.l.process(lowHp_.c, lo);
-        lo = lowLp_.l.process(lowLp_.c, lo);
-        l += lo; r += lo;
-
+        float l = padL_[i] + airL_[i] * kAirDirect + shimL_[i] + lowL_[i];
+        float r = padR_[i] + airR_[i] * kAirDirect + shimR_[i] + lowL_[i];
         lowShelf_.process(l, r);
         warmBell_.process(l, r);
         warmHighCut_.process(l, r);
-        brightShelf_.process(l, r);
-        airShelf_.process(l, r);
+        tilt_.process(l, r);
         if (satMix_ > 0.0f) {
             l += satMix_ * (softSat(l * satDrive_) / satDrive_ - l);
             r += satMix_ * (softSat(r * satDrive_) / satDrive_ - r);
         }
-        // Bloqueio de DC: a saturação (ímpar) em formas de onda assimétricas gera um pequeno offset.
         l = dcL_.hp(l);
         r = dcR_.hp(r);
 
-        float wl = 0.0f, wr = 0.0f;
-        reverb_.process(l + shimL_[i] * shimSend, r + shimR_[i] * shimSend, wl, wr);
-
         const float dry = dry0 + (dry1 - dry0) * k;
         const float wet = wet0 + (wet1 - wet0) * k;
-        float ol = l * dry + wl * wet;
-        float orr = r * dry + wr * wet;
+        const float ol = (l * dry + wetL_[i] * wet) * kHeadroom;
+        const float orr = (r * dry + wetR_[i] * wet) * kHeadroom;
 
+        // Largura M/S com graves sempre mono (abaixo de ~140 Hz o lado é removido).
         const float w = width0 + (width1 - width0) * k;
         const float m = 0.5f * (ol + orr);
-        const float s = 0.5f * (ol - orr) * w;
-        const float g = master0 + (master1 - master0) * k;
-        ol = (m + s) * g;
-        orr = (m - s) * g;
-
+        float s = 0.5f * (ol - orr);
+        s -= sideLp_.lp(s);
+        s *= w;
+        tmpL_[i] = m + s;
+        tmpR_[i] = m - s;
+    }
+    glue_.process(tmpL_.data(), tmpR_.data(), n);
+    for (int i = 0; i < n; ++i) {
+        const float g = master0 + (master1 - master0) * static_cast<float>(i + 1) * invN;
+        float ol = tmpL_[i] * g, orr = tmpR_[i] * g;
         limiter_.process(ol, orr);
         out[2 * i] = ol;
         out[2 * i + 1] = orr;
@@ -279,19 +418,6 @@ void PadEngine::process(float* out, int frames) {
     ScopedNoDenormals noDenormals;
     const auto t0 = std::chrono::steady_clock::now();
 
-    // Troca de banco de samples: só sem vozes (as vozes guardam ponteiros para zonas) e
-    // depois que o banco anterior já foi recolhido fora do callback (nunca há delete aqui).
-    if (pendingBank_.load(std::memory_order_acquire) != nullptr &&
-        retiredBank_.load(std::memory_order_acquire) == nullptr && voices_.activeCount() == 0) {
-        SampleBank* nb = pendingBank_.exchange(nullptr, std::memory_order_acq_rel);
-        if (nb) {
-            SampleBank* old = bank_.release();
-            bank_.reset(nb);
-            ctx_.bank = nb;
-            retiredBank_.store(old, std::memory_order_release);
-        }
-    }
-
     handleCommands();
 
     int done = 0;
@@ -302,13 +428,17 @@ void PadEngine::process(float* out, int frames) {
         done += n;
     }
 
-    // Telemetria (sem bloqueio).
+    // Uso das fontes (o carregador só libera o que nenhuma voz usa).
+    voices_.countSourceUsage(usage_.data());
+    sources_.publishUsage(usage_.data());
+
     statVoices_.store(voices_.activeCount(), std::memory_order_relaxed);
     statSteals_.store(voices_.stealCount(), std::memory_order_relaxed);
     statHardSteals_.store(voices_.hardStealCount(), std::memory_order_relaxed);
     statPlaying_.store(voices_.isPlaying(), std::memory_order_relaxed);
     atomicMax(statPeak_, peakAcc_);
     atomicMin(statLimiter_, limiter_.takeMinGain());
+    atomicMax(statGlue_, glue_.takeMaxReductionDb());
     peakAcc_ = 0.0f;
     const double elapsed = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
     const double budget = static_cast<double>(frames) / sr_;

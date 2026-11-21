@@ -15,6 +15,7 @@
 #include <array>
 #include "Voice.h"
 #include "MusicTheory.h"
+#include "Sources.h"
 
 namespace pad {
 
@@ -36,6 +37,8 @@ public:
     uint64_t stealCount() const { return steals_; }
     uint64_t hardStealCount() const { return hardSteals_; }
     const Voice& voice(int i) const { return voices_[static_cast<size_t>(i)]; }
+    // Quantas vozes usam cada fonte (para o carregador liberar memória com segurança).
+    void countSourceUsage(uint16_t* counts) const;
 
 private:
     int allocate(const bool* claimed);

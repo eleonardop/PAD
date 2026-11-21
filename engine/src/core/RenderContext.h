@@ -2,17 +2,15 @@
 #pragma once
 
 #include "../dsp/Wavetable.h"
-#include "SampleBank.h"
+#include "Sources.h"
 
 namespace pad {
 
 constexpr int kSubBlock = 32; // tamanho do sub-bloco de controle (0,67 ms a 48 kHz)
 
+// Wavetable da camada Low (grave limpo: fundamental + 2º/3º harmônicos discretos).
 struct LayerTables {
-    Wavetable warmA;   // corpo quente (série harmônica completa, queda suave)
-    Wavetable warmB;   // corpo "oco" (ímpares realçados) — dá caráter ao par desafinado
-    Wavetable shimmer; // quase senoidal, poucos harmônicos (brilho limpo)
-    Wavetable low;     // grave redondo: fundamental + 2º/3º harmônicos discretos
+    Wavetable low;
 };
 
 // Valores de parâmetros já suavizados para o sub-bloco atual.
@@ -20,16 +18,23 @@ struct RenderContext {
     float sampleRate = 48000.0f;
     float controlRate = 48000.0f / kSubBlock;
     const LayerTables* tables = nullptr;
-    const SampleBank* bank = nullptr;
+    const SourceLibrary* sources = nullptr;
 
-    float layerWarm = 0, layerAir = 0, layerStrings = 0, layerShimmer = 0, layerLow = 0;
-    float brightness = 0.5f, air = 0.5f, movement = 0.5f, detune = 0.5f;
+    float layerWarm = 0, layerVox = 0, layerStrings = 0, layerTexture = 0, layerAir = 0, layerShimmer = 0, layerLow = 0;
+    float brightness = 0.5f, warmth = 0.5f, air = 0.5f, movement = 0.5f, detune = 0.5f;
+    float evolution = 0.5f, intensity = 0.5f;
+    // Moduladores lentos comuns a todas as vozes (−1..1): a Evolução move o conjunto inteiro,
+    // como uma respiração da seção, em vez de variações independentes que se cancelam.
+    float evoMorph = 0.0f, evoMorph2 = 0.0f, evoCut = 0.0f;
+    int stringsSource = 0;  // 0 = reais, 1 = sintéticas
+    int textureType = 0;    // 0 = piano "Cathedral", 1 = órgão
 };
 
-// Barramentos de saída das vozes (estéreo). O motor aplica os efeitos depois.
+// Barramentos de saída das vozes (estéreo). O motor aplica ensemble, espaço e mixagem depois.
 struct Buses {
-    float* padL; float* padR;     // Warm + Strings + Air + Shimmer
-    float* shimL; float* shimR;   // cópia da camada Shimmer (envio extra ao reverb shimmer)
+    float* padL; float* padR;     // corpo: Warm + Vox + Strings + Texture (passa pelo ensemble)
+    float* airL; float* airR;     // camada Air (parte vai direto, parte só para o reverb)
+    float* shimL; float* shimR;   // camada Shimmer (Glass)
     float* lowL; float* lowR;     // camada Low (mono nos dois canais)
 };
 

@@ -3,6 +3,7 @@
 #include "AudioAnalysis.h"
 #include "core/RingBuffer.h"
 #include "core/SampleBank.h"
+#include "core/Zone.h"
 #include "dsp/Wavetable.h"
 #include "dsp/Crossfade.h"
 #include "dsp/Envelope.h"
@@ -185,16 +186,17 @@ TEST(reverb_decaimento_e_shimmer_estavel) {
     }
 }
 
-// Banco de samples: loop sem emenda (a junção não é diferente do resto do sinal).
+// Cordas sintéticas (reserva da v0.1): loop sem emenda (a junção não difere do resto do sinal).
 TEST(samples_loop_sem_emenda) {
-    SampleBank bank;
-    bank.bakeStringTexture(48000.0f, 77, 48, 60, 12, 2.0f);
-    CHECK(bank.zoneCount() == 2);
-    for (size_t zi = 0; zi < bank.zoneCount(); ++zi) {
-        const SampleZone& z = bank.zone(zi);
+    ZoneBank bank;
+    bakeSynthStrings(bank, 48000.0f, 77, 48, 60, 12, 2.0f);
+    CHECK(bank.size() == 2);
+    for (size_t zi = 0; zi < bank.size(); ++zi) {
+        const Zone& z = *bank.zoneAt(zi);
+        auto at = [&](int i) { return z.l[static_cast<size_t>(i + 1)] * z.scale; };
         double maxD = 0, sumD = 0;
-        for (int i = 1; i < z.length; ++i) { const double d = std::fabs(z.at(i) - z.at(i - 1)); maxD = std::max(maxD, d); sumD += d; }
-        const double joint = std::fabs(z.at(0) - z.at(z.length - 1));
+        for (int i = 1; i < z.length; ++i) { const double d = std::fabs(at(i) - at(i - 1)); maxD = std::max(maxD, d); sumD += d; }
+        const double joint = std::fabs(at(0) - at(z.length - 1));
         const double avg = sumD / (z.length - 1);
         report("zona %d: salto na junção %.5f, média %.5f, máximo interno %.5f", z.rootNote, joint, avg, maxD);
         CHECK(joint < maxD);
@@ -207,7 +209,7 @@ TEST(samples_loop_sem_emenda) {
     float lp = 0;
     for (auto& v : noise) { lp = 0.9f * lp + 0.1f * rng.bipolar(); v = lp; }
     std::vector<float> loop;
-    const float rho = SampleBank::makeSeamlessLoop(noise, 48000 * 2, 24000, loop);
+    const float rho = makeSeamlessLoop(noise, 48000 * 2, 24000, loop);
     double eX = 0, eRef = 0;
     for (int i = 0; i < 24000; ++i) { eX += double(loop[i]) * loop[i]; eRef += double(noise[24000 + i]) * noise[24000 + i]; }
     report("WAV externo (ruído): correlação %.3f, nível na região de crossfade %.2f dB", rho, 10 * std::log10(eX / eRef));
