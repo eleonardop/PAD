@@ -111,7 +111,7 @@ int Conductor::chooseNote(int lo, int hi, bool allowNinth, int center) {
         const int iv = std::abs(m - ref);
         if (iv > 7) continue;
         float weight;
-        if (iv == 0) weight = repeatCount_ >= 2 ? 0.0f : 0.25f;
+        if (iv == 0) weight = repeatCount_ >= 1 ? 0.0f : 0.25f;
         else if (iv <= 2) weight = 1.0f;
         else if (iv <= 5) weight = 0.8f;
         else weight = 0.35f;
@@ -432,7 +432,7 @@ int Conductor::chooseMicroNote(int lo, int hi, bool colors, int center) {
         const bool color = (cmask >> pc) & 1 && m >= 76; // cores só no registro alto (Mi5+)
         if (!tone && !color) continue;
         const int iv = std::abs(m - ref);
-        float weight = iv == 0 ? (repeatCount_ >= 2 ? 0.0f : 0.3f) : iv <= 2 ? 1.0f : iv <= 5 ? 0.85f : iv <= 9 ? 0.45f : 0.15f;
+        float weight = iv == 0 ? (repeatCount_ >= 1 ? 0.0f : 0.3f) : iv <= 2 ? 1.0f : iv <= 5 ? 0.85f : iv <= 9 ? 0.45f : 0.15f;
         if (tone) weight *= pc == rootPc_ ? 1.1f : 1.0f;
         else weight *= pc == (rootPc_ + 2) % 12 ? 0.5f : 0.3f; // 9ª mais que 7ª
         if (weight <= 0.0f) continue;

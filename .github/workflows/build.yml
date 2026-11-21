@@ -62,6 +62,11 @@ jobs:
           ./build/engine/pad_scenarios_v3 cmp_v03 assets
           python3 tools/compare/make_comparison_v3.py cmp_v02 cmp_v03 comparacao_v03
 
+      - name: Refinamento v0.4 — acordes sustentados, antigos × novos, progressões, sementes
+        run: |
+          ./build/engine/pad_scenarios_refino refino_bruto assets
+          python3 tools/compare/make_refino_package.py refino_bruto refino_v04
+
       - name: Publicar resultados (testes, desempenho, WAVs)
         uses: actions/upload-artifact@v4
         with:
@@ -83,6 +88,17 @@ jobs:
             comparacao_v03/espectrogramas/
             comparacao_v03/medicoes.csv
             comparacao_v03/medicoes.md
+
+      - name: Publicar pacote de escuta v0.4
+        uses: actions/upload-artifact@v4
+        with:
+          name: PAD-v04-refino-escuta
+          path: |
+            refino_v04/estereo/
+            refino_v04/mono/
+            refino_v04/originais/
+            refino_v04/loudness.csv
+            refino_v04/loudness.md
 
   motor-arm64:
     name: Motor C++ (ARM64) — testes e desempenho
