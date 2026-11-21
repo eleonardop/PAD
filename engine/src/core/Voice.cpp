@@ -287,22 +287,20 @@ void Voice::render(const RenderContext& ctx, Buses& out, int n) {
     morphVox_.setRate(morphRate * 0.8f, ctx.controlRate);
     morphAir_.setRate(morphRate * 1.3f, ctx.controlRate);
     evoCut_.setRate(morphRate * 0.7f, ctx.controlRate);
-    // O modulador suave fica tipicamente em ±0,5; o fator 1,1 leva o morph a percorrer quase
-    // toda a faixa entre as duas tabelas com Evolução no máximo.
     // 70% comum ao conjunto + 30% próprio da voz (cada nota ainda respira um pouco diferente).
     const float gW = 0.7f * ctx.evoMorph + 0.3f * morphWarm_.tick();
     const float gV = 0.7f * ctx.evoMorph2 + 0.3f * morphVox_.tick();
     const float gA = 0.7f * ctx.evoMorph2 + 0.3f * morphAir_.tick();
-    const float mWarm = clampf(0.10f + 0.65f * inten + 0.6f * evo * gW, 0.0f, 1.0f);
-    const float mVox = clampf(0.45f + 0.25f * (inten - 0.5f) + 0.6f * evo * gV, 0.0f, 1.0f);
-    const float mAir = clampf(0.5f + 0.6f * evo * gA, 0.0f, 1.0f);
+    const float mWarm = clampf(0.10f + 0.65f * inten + 0.75f * evo * gW, 0.0f, 1.0f);
+    const float mVox = clampf(0.45f + 0.25f * (inten - 0.5f) + 0.75f * evo * gV, 0.0f, 1.0f);
+    const float mAir = clampf(0.5f + 0.75f * evo * gA, 0.0f, 1.0f);
     const float intensityGain = dbToGain((inten - 0.5f) * 6.0f);
     const float detuneCents = ctx.detune * 9.0f;
 
     // ---- Filtros (recalculados só quando mudam)
     const float b = clampf(ctx.brightness + 0.3f * (inten - 0.5f), 0.0f, 1.0f);
     float cutoff = (f0_ * (3.0f + 10.0f * b * b) + 600.0f + 5200.0f * b) *
-                   std::exp2(1.0f * evo * (0.7f * ctx.evoCut + 0.3f * evoCut_.tick()) + 0.35f * mov * modCut_.tick() +
+                   std::exp2(1.2f * evo * (0.7f * ctx.evoCut + 0.3f * evoCut_.tick()) + 0.35f * mov * modCut_.tick() +
                              1.4f * (inten - 0.5f)); // Intensidade abre o filtro (±0,7 oitava), como tocar mais forte
     cutoff = clampf(cutoff, 120.0f, 15000.0f);
     const float drive = 0.4f + 1.0f * ctx.warmth;
