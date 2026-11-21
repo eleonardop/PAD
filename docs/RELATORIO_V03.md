@@ -194,7 +194,7 @@ como 8–10% para os presets da v0.3, mas isso é estimativa — rode o teste de
 | `texturas_abaixo_do_pad` | texturas ≥ 8 dB abaixo do pad | ok |
 | `swell_manual_pico_no_fim` | pico a 3 s e a 6,5 s | 2,9 s e 6,4 s |
 | `mono_v03_sem_cancelamento` | perda e bandas em mono | −1,93 / −2,40 dB |
-| `tape_seguro_em_mono` | fita não muda a relação L/R | ok |
+| `tape_seguro_em_mono` | fita não muda a relação L/R (mesmo sinal antes e depois) | correlação 0,503 → 0,485 |
 | `texturas_fontes_sob_demanda` | carrega e libera piano/pratos | +55 MB e volta |
 | `v03_estabilidade_2min` | 2 min com swells a cada 20 s | RMS ±0,3 dB, 0 alocações |
 

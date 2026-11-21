@@ -7,6 +7,7 @@
 #include <thread>
 #include "core/Conductor.h"
 #include "core/TexturePlayer.h"
+#include "dsp/TapeCharacter.h"
 
 using namespace pad;
 using namespace padtest;
@@ -14,7 +15,7 @@ using namespace padtest;
 namespace {
 constexpr float kSr = 48000.0f;
 constexpr float kLimit = 0.8913f;
-constexpr int kModern = 15, kVintage = 12;
+constexpr int kModern = 15;
 size_t fr(double s) { return static_cast<size_t>(s * kSr); }
 
 uint16_t chordMask(int root, ChordType t) {
@@ -336,21 +337,32 @@ TEST(mono_v03_sem_cancelamento) {
     CHECK(worstBand > -6.0);
 }
 
-// A fita aplica a mesma modulação nos dois canais: a relação L/R não muda.
+// A fita aplica a mesma modulação nos dois canais: a relação L/R não muda. Teste direto no
+// processador, com o mesmo sinal estéreo (correlação ~0,5) antes e depois (determinístico).
 TEST(tape_seguro_em_mono) {
-    PadEngine& e = sharedEngine();
-    double corr[2];
-    for (int k = 0; k < 2; ++k) {
-        resetEngine(e, kVintage);
-        e.setParam(ParamId::Activity, 0.0f);
-        e.setParam(ParamId::Bloom, 0.0f);
-        e.setParam(ParamId::Tape, k == 0 ? 0.0f : 1.0f);
-        e.waitForSources(60.0);
-        auto x = render(e, 8.0, 192, [&](double t) { if (t == 0.0) e.playChord(0, ChordType::Major); });
-        corr[k] = lrCorrelation(x, fr(3.0), fr(8.0));
+    TapeCharacter tape;
+    tape.prepare(kSr);
+    Rng rng(42);
+    const int n = static_cast<int>(kSr * 6);
+    std::vector<float> x(static_cast<size_t>(n) * 2), y(static_cast<size_t>(n) * 2);
+    float la = 0, lb = 0, lc = 0;
+    for (int i = 0; i < n; ++i) {
+        la = 0.97f * la + 0.1f * rng.bipolar();
+        lb = 0.97f * lb + 0.1f * rng.bipolar();
+        lc = 0.97f * lc + 0.1f * rng.bipolar();
+        x[2 * static_cast<size_t>(i)] = la + lb;
+        x[2 * static_cast<size_t>(i) + 1] = la + lc;
     }
-    report("correlação L/R sem fita %.3f, com fita %.3f", corr[0], corr[1]);
-    CHECK(std::fabs(corr[0] - corr[1]) < 0.08);
+    std::vector<float> l(32), r(32);
+    for (int i = 0; i + 32 <= n; i += 32) {
+        for (int k = 0; k < 32; ++k) { l[k] = x[2 * static_cast<size_t>(i + k)]; r[k] = x[2 * static_cast<size_t>(i + k) + 1]; }
+        tape.process(l.data(), r.data(), 32, 1.0f);
+        for (int k = 0; k < 32; ++k) { y[2 * static_cast<size_t>(i + k)] = l[k]; y[2 * static_cast<size_t>(i + k) + 1] = r[k]; }
+    }
+    const double c0 = lrCorrelation(x, fr(1.0), fr(6.0)), c1 = lrCorrelation(y, fr(1.0), fr(6.0));
+    report("correlação L/R antes da fita %.3f, depois %.3f", c0, c1);
+    CHECK(std::fabs(c0 - c1) < 0.03); // a saturação e o passa-baixa mudam um pouco o peso das frequências
+    CHECK(allFinite(y));
 }
 
 // Texturas carregadas sob demanda e liberadas quando desligadas.
