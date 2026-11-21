@@ -12,7 +12,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          fetch-depth: 0   # precisa da tag v0.1.0-motor para a comparação antes/depois
+          fetch-depth: 0   # precisa da branch versao-0.1-motor (v0.1) para a comparação antes/depois
 
       - uses: actions/setup-python@v5
         with:
@@ -48,7 +48,7 @@ jobs:
 
       - name: Comparação antes (v0.1) × depois (v0.2), loudness igualado
         run: |
-          git worktree add ../v01 v0.1.0-motor
+          git worktree add ../v01 origin/versao-0.1-motor
           g++ -O2 -std=c++17 -DPAD_V1 -I../v01/engine/src tools/compare/Scenarios.cpp \
             $(find ../v01/engine/src -name '*.cpp') -lpthread -o scen_v1
           ./scen_v1 cmp_antes
