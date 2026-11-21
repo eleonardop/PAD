@@ -69,7 +69,7 @@ bool decodeFlac16(const std::vector<uint8_t>& data, std::vector<int16_t>& pcm, i
 
 const char* sourceName(SourceId s) {
     static const char* kNames[kSourceCount] = {"warm_escuro", "warm_aberto", "vox_ah", "vox_oh", "air_a", "air_b", "glass",
-                                               "cordas_reais", "cordas_sinteticas", "piano_cathedral", "orgao"};
+                                               "cordas_reais", "cordas_sinteticas", "piano_cathedral", "orgao", "piano_suave", "piano_suave_rev", "ep", "ep_rev", "vibrafone", "pratos", "pratos_rev"};
     const int i = static_cast<int>(s);
     return (i >= 0 && i < kSourceCount) ? kNames[i] : "?";
 }
@@ -196,15 +196,18 @@ bool SourceLibrary::loadSampleSet(AssetProvider& assets, const std::string& set,
     std::istringstream in(std::string(manifest.begin(), manifest.end()));
     std::string line;
     int loaded = 0;
+    bool oneShot = false;
     std::vector<uint8_t> data;
     std::vector<int16_t> pcm;
     while (std::getline(in, line)) {
+        if (line.rfind("#! oneshot", 0) == 0) { oneShot = true; continue; }
         if (line.empty() || line[0] == '#') continue;
         std::istringstream ls(line);
-        std::string file;
+        std::string file, kind;
         int root = 0;
         double hz = 0.0;
         if (!(ls >> file >> root >> hz)) continue;
+        ls >> kind;
         if (!assets.readAll("samples/" + set + "/" + file, data)) return false;
         int frames = 0, ch = 0, sr = 0;
         if (!decodeFlac16(data, pcm, frames, ch, sr)) return false;
@@ -213,6 +216,17 @@ bool SourceLibrary::loadSampleSet(AssetProvider& assets, const std::string& set,
         z.rootHz = static_cast<float>(hz);
         z.sampleRate = static_cast<float>(sr);
         z.setFromInterleaved16(pcm.data(), frames, ch);
+        if (oneShot) {
+            // One-shots: o nível relativo entre as notas já foi acertado na preparação
+            // (o decaimento natural faz parte do som); só o pico comum é recuperado.
+            z.makeOneShotGuards();
+            std::snprintf(z.kind, sizeof z.kind, "%s", kind.c_str());
+            if (hz <= 0.0) { z.rootNote = 0; z.rootHz = 0.0f; }
+            z.computePeak();
+            out.add(std::move(z));
+            ++loaded;
+            continue;
+        }
         // Normaliza cada zona para -20 dBFS RMS (o mesmo nível das tabelas PADsynth). Os
         // arquivos já vêm perto disso, mas o limite de pico do FLAC pode baixar notas com
         // muitos transientes; aqui o equilíbrio entre zonas fica garantido no próprio motor.
@@ -324,6 +338,28 @@ bool SourceLibrary::loadSource(SourceId s, ZoneBank& out) {
         case SourceId::StringsReal: return assets_ && loadSampleSet(*assets_, "strings", out);
         case SourceId::PianoCathedral: return assets_ && loadSampleSet(*assets_, "piano_cathedral", out);
         case SourceId::Organ: return assets_ && loadSampleSet(*assets_, "organ", out);
+        case SourceId::PianoSoft: return assets_ && loadSampleSet(*assets_, "piano_soft", out);
+        case SourceId::Vibes: return assets_ && loadSampleSet(*assets_, "vibes", out);
+        case SourceId::Cymbal: return assets_ && loadSampleSet(*assets_, "cymbal", out);
+        case SourceId::EpTine: return buildEp(sr_, out);
+        case SourceId::PianoSoftRev: {
+            ZoneBank tmp;
+            if (!assets_ || !loadSampleSet(*assets_, "piano_soft", tmp)) return false;
+            buildReversed(tmp, out, 3.5);
+            return !out.empty();
+        }
+        case SourceId::EpTineRev: {
+            ZoneBank tmp;
+            if (!buildEp(sr_, tmp)) return false;
+            buildReversed(tmp, out, 3.0);
+            return !out.empty();
+        }
+        case SourceId::CymbalRev: {
+            ZoneBank tmp;
+            if (!assets_ || !loadSampleSet(*assets_, "cymbal", tmp)) return false;
+            buildReversed(tmp, out, 6.0, "hit");
+            return !out.empty();
+        }
         default: return buildPadSynth(s, sr_, padN_, out);
     }
 }

@@ -107,6 +107,10 @@ JNIEXPORT jboolean JNICALL Java_com_eleonardop_pad_engine_NativeBridge_nativeSet
     return h && H(h)->engine.setKey(root) ? JNI_TRUE : JNI_FALSE;
 }
 
+JNIEXPORT jboolean JNICALL Java_com_eleonardop_pad_engine_NativeBridge_nativeSwell(JNIEnv*, jclass, jlong h) {
+    return h && H(h)->engine.swell() ? JNI_TRUE : JNI_FALSE;
+}
+
 JNIEXPORT jboolean JNICALL Java_com_eleonardop_pad_engine_NativeBridge_nativeStopNotes(JNIEnv*, jclass, jlong h) {
     return h && H(h)->engine.stop() ? JNI_TRUE : JNI_FALSE;
 }
@@ -156,9 +160,10 @@ JNIEXPORT jfloatArray JNICALL Java_com_eleonardop_pad_engine_NativeBridge_native
 // [vozes ativas, carga média do callback (0..1+), pico de saída, menor ganho do limitador,
 //  tocando (0/1), taxa do dispositivo, frames de buffer, roubos de voz, pior bloco (0..1+),
 //  memória das fontes (MB), máscara de fontes prontas, máscara de fontes com falha,
-//  falhas de buffer (underruns) informadas pelo Android, frames por burst]
+//  falhas de buffer (underruns) informadas pelo Android, frames por burst,
+//  v0.3: vozes de textura, eventos de textura, blooms, swells, estado do acorde]
 JNIEXPORT jfloatArray JNICALL Java_com_eleonardop_pad_engine_NativeBridge_nativeStats(JNIEnv* env, jclass, jlong h) {
-    constexpr int kN = 14;
+    constexpr int kN = 19;
     jfloatArray arr = env->NewFloatArray(kN);
     if (!h) return arr;
     NativeHandle* n = H(h);
@@ -167,7 +172,9 @@ JNIEXPORT jfloatArray JNICALL Java_com_eleonardop_pad_engine_NativeBridge_native
                           static_cast<jfloat>(n->player.deviceSampleRate()), static_cast<jfloat>(n->player.bufferFrames()),
                           static_cast<jfloat>(s.steals), s.loadPeak, static_cast<jfloat>(s.sourcesMemoryBytes / 1e6),
                           static_cast<jfloat>(s.sourcesReady), static_cast<jfloat>(s.sourcesFailed),
-                          static_cast<jfloat>(n->player.xRuns()), static_cast<jfloat>(n->player.burstFrames())};
+                          static_cast<jfloat>(n->player.xRuns()), static_cast<jfloat>(n->player.burstFrames()),
+                          static_cast<jfloat>(s.textureVoices), static_cast<jfloat>(s.textureEvents),
+                          static_cast<jfloat>(s.blooms), static_cast<jfloat>(s.swells), static_cast<jfloat>(s.lifeStage)};
     env->SetFloatArrayRegion(arr, 0, kN, v);
     return arr;
 }

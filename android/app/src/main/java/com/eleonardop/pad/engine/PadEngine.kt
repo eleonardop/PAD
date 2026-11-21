@@ -39,7 +39,17 @@ enum class PadParam(val label: String, val choices: List<String>? = null) {
     EARLY_REFLECTIONS("Reflexões iniciais"),
     DIFFUSION("Difusão"),
     STRINGS_SOURCE("Fonte das cordas", listOf("Cordas reais (VSCO 2 CE)", "Cordas sintéticas (v0.1)")),
-    TEXTURE_TYPE("Tipo de textura", listOf("Piano Cathedral (Salamander)", "Órgão suave (VCSL)"));
+    TEXTURE_TYPE("Tipo de textura", listOf("Piano Cathedral (Salamander)", "Órgão suave (VCSL)")),
+    // v0.3
+    LAYER_KEYS("Teclas esparsas (TEXTURE)"),
+    KEYS_TYPE("Tipo de teclas", listOf("Piano suave (VCSL)", "EP (FM próprio)")),
+    LAYER_SPARKLE("Brilho de vibrafone (SPARKLE)"),
+    LAYER_METAL("Pratos (baqueta macia)"),
+    TAPE("Fita (Vintage)"),
+    ACTIVITY("Atividade das texturas"),
+    BLOOM("Transições: intensidade (Bloom)"),
+    BLOOM_CHANCE("Transições: frequência"),
+    SWELL_TIME("Tempo do Swell manual (s)");
 
     val id: Int get() = ordinal
     val range: FloatArray by lazy { NativeBridge.nativeParamRange(ordinal) } // [min, max, padrão]
@@ -66,6 +76,11 @@ data class EngineStats(
     val sourcesFailed: Int,
     val xRuns: Int,           // falhas de buffer contadas pelo Android (-1 = indisponível)
     val burstFrames: Int,
+    val textureVoices: Int,
+    val textureEvents: Int,
+    val blooms: Int,
+    val swells: Int,
+    val lifeStage: Int,       // 0 silêncio, 1 estabelecimento, 2 expansão, 3 transformação, 4 sustentação, 5 dissolução
 )
 
 /**
@@ -111,11 +126,19 @@ object PadEngine {
     fun playChord(rootPitchClass: Int, type: ChordType): Boolean = NativeBridge.nativePlayChord(handle, rootPitchClass, type.ordinal)
     fun setKey(rootPitchClass: Int): Boolean = NativeBridge.nativeSetKey(handle, rootPitchClass)
     fun stop(): Boolean = NativeBridge.nativeStopNotes(handle)
+    /** Pre-swell manual: cresce durante "Tempo do Swell" e atinge o pico no fim (troque o acorde ali). */
+    fun swell(): Boolean = NativeBridge.nativeSwell(handle)
 
     fun setParam(param: PadParam, value: Float) = NativeBridge.nativeSetParam(handle, param.id, value)
     fun getParam(param: PadParam): Float = NativeBridge.nativeGetParam(handle, param.id)
 
     val presetNames: List<String> by lazy { (0 until NativeBridge.nativePresetCount()).map { NativeBridge.nativePresetName(it) } }
+
+    /** Ordem de exibição: presets da v0.3 primeiro (índices 8+), depois os da v0.2. */
+    val presetDisplayOrder: List<Int> by lazy {
+        val n = presetNames.size
+        (8 until n).toList() + (0 until minOf(8, n)).toList()
+    }
     fun presetDescription(index: Int): String = NativeBridge.nativePresetDescription(index)
     fun applyPreset(index: Int) = NativeBridge.nativeApplyPreset(handle, index)
 
@@ -143,6 +166,7 @@ object PadEngine {
         return EngineStats(
             s[0].toInt(), s[1], s[2], s[3], s[4] > 0.5f, s[5].toInt(), s[6].toInt(), s[7].toInt(),
             s[8], s[9], s[10].toInt(), s[11].toInt(), s[12].toInt(), s[13].toInt(),
+            s[14].toInt(), s[15].toInt(), s[16].toInt(), s[17].toInt(), s[18].toInt(),
         )
     }
 }

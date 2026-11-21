@@ -1,0 +1,10 @@
+#! oneshot
+# arquivo nota_midi_raiz frequencia_raiz_hz [tipo] (VCSL vibrafone, baqueta macia, CC0)
+vib_052.flac 64 329.6305
+vib_055.flac 67 391.9633
+vib_059.flac 71 493.8340
+vib_062.flac 74 587.3147
+vib_065.flac 77 698.4694
+vib_069.flac 81 879.9599
+vib_072.flac 84 1046.5130
+vib_076.flac 88 1318.4931

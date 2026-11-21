@@ -1,0 +1,16 @@
+#! oneshot
+# arquivo nota_midi_raiz frequencia_raiz_hz [tipo] (VCSL pratos suspensos, CC0)
+cym_00_swell2.flac 0 0 swell2
+cym_01_swell2.flac 0 0 swell2
+cym_02_swell4.flac 0 0 swell4
+cym_03_swell4.flac 0 0 swell4
+cym_04_swell7.flac 0 0 swell7
+cym_05_swell7.flac 0 0 swell7
+cym_06_wash.flac 0 0 wash
+cym_07_wash.flac 0 0 wash
+cym_08_bow.flac 0 0 bow
+cym_09_bow.flac 0 0 bow
+cym_10_bow.flac 0 0 bow
+cym_11_bow.flac 0 0 bow
+cym_12_hit.flac 0 0 hit
+cym_13_hit.flac 0 0 hit

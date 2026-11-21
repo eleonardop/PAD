@@ -16,22 +16,25 @@ latência de lookahead.
 | Sustain | > ~40 s | tudo continua vivo, com densidade de eventos um pouco menor (para não cansar) |
 | Dissolve | ao parar | texturas soltam com release longo; nada novo é disparado |
 
-A Evolução estica ou encurta esses tempos e escala a profundidade de cada mudança. Com Evolução 0
-o pad fica praticamente parado e nenhum evento é gerado.
+A Evolução estica ou encurta esses tempos (escala de 1,6× a 0,7×) e escala a profundidade de cada
+mudança. Com Evolução 0 o organismo fica parado (sem segunda camada, sem deslocamento de timbre,
+espaço ou largura); as notas de textura continuam dependendo só da Atividade, que pode ser zerada.
 
 ## 2. Distância harmônica (0 = mesmo acorde, 1 = muito distante)
 
-`d = 0,5·(1 − notas comuns / notas do menor acorde) + 0,35·(distância entre fundamentais no círculo de quintas / 6) + 0,15·(mudança maior↔menor)`
+`d = 0,5·(1 − notas comuns / notas do menor acorde) + 0,35·(distância no círculo de quintas / 6) + 0,15·(mudança maior↔menor)`
 
-Exemplos: G → Em (relativa) ≈ 0,26; G → C ≈ 0,32; G → D ≈ 0,32; G → Bb ≈ 0,78; mesmo acorde = 0.
+No círculo de quintas o acorde menor usa a posição da relativa maior (Em ≈ G), como no Tonnetz.
+Valores medidos (teste `maestro_distancia_harmonica`): G → G = 0; G → Em = 0,32; G → C = 0,39;
+G → D = 0,39; G → Bb = 0,51; G → C# = 0,85.
 
 Quando o acorde muda:
 * a "idade" do organismo não volta a zero: `idade ← idade · (1 − d)`. Mudança pequena mantém o
   ambiente; mudança grande recomeça o ciclo;
-* a força do bloom é `Bloom · (0,35 + 0,65·d) · fator de duração do acorde anterior` (acordes
-  anteriores com menos de 1,5 s quase não disparam nada: em trocas rápidas o maestro fica quieto);
-* o bloom só acontece se passar no sorteio de frequência (`BloomChance`, com mais chance quanto
-  maior a distância) e se o último bloom foi há mais de 4 s.
+* a força do bloom é `Bloom · (0,35 + 0,65·d) · fator de duração do acorde anterior` (o fator vai
+  de 0 em 1 s a 1 em 4 s: em trocas rápidas o maestro fica quieto);
+* o bloom só acontece se passar no sorteio de frequência (`BloomChance · (0,4 + 0,6·d)`) e se o
+  último bloom foi há mais de 4 s. No primeiro acorde depois do silêncio, d vale 0,6.
 
 ## 3. Escolha de notas (texturas tonais)
 
@@ -42,7 +45,7 @@ Regras para **qualquer** nota que o maestro gera:
    nunca a terça — assim nada contradiz o que a banda está tocando.
 3. **Nunca** 2ª menor, 9ª menor, trítono que não pertença ao acorde, nem 4ª sobre terça maior.
 4. **Registro**: teclas (piano/EP) entre Mi4 e Ré6, acima da região central da voz; brilho (vibrafone)
-   entre Mi5 e Dó7. Nada abaixo de Mi4: a região grave pertence ao pad e ao baixo.
+   entre Dó5 e Mi6. Nada abaixo de Mi4: a região grave pertence ao pad e ao baixo.
 5. **Linha melódica**: cada nota nova é escolhida entre as candidatas mais próximas da anterior
    (movimento de até uma 5ª, preferindo grau conjunto), sem repetir a mesma nota mais de duas vezes
    seguidas. Isso cria uma linha que "respira", sem motivo rítmico.

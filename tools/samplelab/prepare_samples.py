@@ -8,6 +8,13 @@ compatível em loops sustentados prontos para o motor:
   piano_cathedral  Salamander Grand Piano V3 (CC-BY 3.0) ou VCSL Steinway B (CC0):
                    nota de piano "congelada" no espectro, com evolução lenta e periódica
   organ            VCSL Pipe Organ, manual quieto (CC0): órgão de tubos suave
+  piano_soft       VCSL Steinway B com pedal, dinâmica mais suave (CC0): notas one-shot (v0.3)
+  vibes            VCSL vibrafone, baqueta macia (CC0): notas one-shot (v0.3)
+  cymbal           VCSL pratos suspensos, baqueta macia e arco (CC0): swells, wash, arco e
+                   ataques pp para reverse (v0.3)
+
+Conjuntos one-shot têm a linha "#! oneshot" no manifest: o motor não faz loop nem
+renormaliza essas zonas. Nos pratos (não tonais) a linha é "arquivo 0 0 tipo".
 
 Saída: assets/samples/<conjunto>/*.flac (48 kHz, 16 bits com dither TPDF, estéreo)
        assets/samples/<conjunto>/manifest.txt
@@ -323,6 +330,112 @@ def prepare_organ(vcsl, out):
         f.write("# arquivo nota_midi_raiz frequencia_raiz_hz (VCSL Pipe Organ, manual quieto, CC0)\n" + "\n".join(lines) + "\n")
 
 
+# --------------------------------------------------------------------------- one-shots (v0.3)
+
+def trim_onset(x, thresh_db=-50.0, pre_ms=3.0):
+    m = np.abs(x).max(axis=1)
+    pk = m.max()
+    idx = np.where(m > pk * 10 ** (thresh_db / 20))[0]
+    start = max(0, idx[0] - int(pre_ms * 1e-3 * SR)) if len(idx) else 0
+    return x[start:]
+
+
+def fade(x, fade_in=0.0, fade_out=0.0):
+    x = x.copy()
+    if fade_in > 0:
+        n = min(len(x), int(fade_in * SR))
+        x[:n] *= (0.5 - 0.5 * np.cos(np.linspace(0, np.pi, n)))[:, None]
+    if fade_out > 0:
+        n = min(len(x), int(fade_out * SR))
+        x[-n:] *= (0.5 + 0.5 * np.cos(np.linspace(0, np.pi, n)))[:, None]
+    return x
+
+
+def write_oneshot_set(out, items, credit, tonal=True, peak=0.95):
+    """items: (nome, x, raiz, f0 ou tipo). Iguala o RMS dos 2 primeiros segundos entre as notas
+    (tonais) e depois escala o conjunto inteiro para o pico comum: nível homogêneo entre zonas
+    sem perder resolução."""
+    os.makedirs(out, exist_ok=True)
+    if tonal:
+        ref = []
+        for _, x, _, _ in items:
+            seg = x[: int(2 * SR)]
+            ref.append(np.sqrt(np.mean(seg ** 2)))
+        g = [np.median(ref) / r for r in ref]
+        items = [(n, x * gi, a, b) for (n, x, a, b), gi in zip(items, g)]
+    pk = max(np.abs(x).max() for _, x, _, _ in items)
+    lines = ["#! oneshot", f"# arquivo nota_midi_raiz frequencia_raiz_hz [tipo] ({credit})"]
+    for name, x, a, b in items:
+        x = x * (peak / pk) if tonal else x * (peak / np.abs(x).max())
+        write_flac16(os.path.join(out, name), x)
+        lines.append(f"{name} {a} {b:.4f}" if tonal else f"{name} 0 0 {b}")
+        print(f"  {name:28s} {len(x) / SR:5.2f} s")
+    with open(os.path.join(out, "manifest.txt"), "w") as f:
+        f.write("\n".join(lines) + "\n")
+
+
+def prepare_piano_soft(vcsl, out):
+    """Steinway B (VCSL) com pedal, camada dinâmica mais suave (vl2), Dó4–Mi6 em tons inteiros.
+    7 s por nota (a nota cai ~30 dB nesse tempo; o resto da cauda vem do reverb), fade de 2 s no fim."""
+    folder = os.path.join(vcsl, "Chordophones/Zithers/Grand Piano, Steinway B/Sus")
+    items = []
+    for n in ["C4", "D4", "E4", "F#4", "G#4", "A#4", "C5", "D5", "E5", "F#5", "G#5", "A#5", "C6", "D6", "E6"]:
+        path = os.path.join(folder, f"JHPiano_Sus_Close_{n}_vl2_rr1.wav")
+        x = trim_onset(load(path))[: int(7.0 * SR)]
+        x = fade(highpass(x, 40.0), 0.0, 2.0)
+        midi = parse_note(n)
+        f0 = estimate_f0(x.mean(axis=1), midi)
+        items.append((f"pso_{midi:03d}.flac", x, int(round(hz_to_midi(f0))), f0))
+    write_oneshot_set(out, items, "VCSL Steinway B, pedal, dinâmica suave, CC0")
+
+
+def prepare_vibes(vcsl, out):
+    """Vibrafone (VCSL), baqueta macia, dinâmica suave (v1). 3,5 s por nota com fade de 1 s."""
+    folder = os.path.join(vcsl, "Idiophones/Struck Idiophones/Vibraphone/Soft Mallets")
+    items = []
+    for n in ["E3", "G3", "B3", "D4", "F4", "A4", "C5", "E5"]:
+        path = sorted(glob.glob(os.path.join(folder, f"Vibes_soft_{n}_v1_*.wav")))[0]
+        x = trim_onset(load(path))[: int(3.5 * SR)]
+        x = fade(highpass(x, 60.0), 0.0, 1.0)
+        midi = parse_note(n)
+        f0 = estimate_f0(x.mean(axis=1), midi)
+        items.append((f"vib_{midi:03d}.flac", x, int(round(hz_to_midi(f0))), f0))
+    write_oneshot_set(out, items, "VCSL vibrafone, baqueta macia, CC0")
+
+
+def prepare_cymbal(vcsl, out):
+    """Pratos suspensos (VCSL) tocados com baqueta macia e arco. Passa-alta de 2ª ordem em 250 Hz
+    (o corpo grave do prato só embola com o pad); o passa-baixa fica no motor, por evento.
+    swellN = rulo crescente de N segundos até o pico, mantido mais 3 s de cauda;
+    wash = rulo pp contínuo (10 s); bow = arco; hit = ataque pp (o motor o inverte = reverse)."""
+    base = os.path.join(vcsl, "Idiophones/Struck Idiophones")
+    spec = [
+        ("Suspended Cymbal 1/susCymb1_cresc_2s.wav", "swell2"), ("Suspended Cymbal 2/susCymb2_cresc_2.5s2.wav", "swell2"),
+        ("Suspended Cymbal 1/susCymb1_cresc_4s.wav", "swell4"), ("Suspended Cymbal 2/susCymb2_cresc_4s.wav", "swell4"),
+        ("Suspended Cymbal 1/susCymb1_cresc_7.5s.wav", "swell7"), ("Suspended Cymbal 2/susCymb2_cresc_7s.wav", "swell7"),
+        ("Suspended Cymbal 2/susCymb2_roll_pp1_nloop.wav", "wash"), ("Suspended Cymbal 1/susCymb1_roll_mp1_nloop.wav", "wash"),
+        ("Suspended Cymbal 1/susCymb1_bow_7.wav", "bow"), ("Suspended Cymbal 1/susCymb1_bow_13.wav", "bow"),
+        ("Suspended Cymbal 2/susCymb2_bowed_2.wav", "bow"), ("Suspended Cymbal 2/susCymb2_bowed_4.wav", "bow"),
+        ("Suspended Cymbal 1/susCymb1_hit_pp1.wav", "hit"), ("Suspended Cymbal 2/susCymb2_hit_pp1.wav", "hit"),
+    ]
+    items = []
+    for i, (rel, kind) in enumerate(spec):
+        x = highpass(load(os.path.join(base, rel)), 250.0)
+        if kind.startswith("swell"):
+            m = np.abs(x).max(axis=1)
+            env = np.convolve(m, np.ones(2400) / 2400, mode="same")
+            peak_i = int(np.argmax(env))
+            x = fade(trim_onset(x[: peak_i + int(3.0 * SR)], -60.0), 0.05, 2.5)
+        elif kind == "wash":
+            x = fade(trim_onset(x, -60.0)[: int(10.0 * SR)], 0.5, 3.0)
+        elif kind == "bow":
+            x = fade(trim_onset(x, -60.0)[: int(10.0 * SR)], 0.05, 1.5)
+        else:
+            x = fade(trim_onset(x, -60.0), 0.0, 0.5)
+        items.append((f"cym_{i:02d}_{kind}.flac", x, 0, kind))
+    write_oneshot_set(out, items, "VCSL pratos suspensos, CC0", tonal=False, peak=0.9)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--vsco")
@@ -330,7 +443,7 @@ def main():
     ap.add_argument("--salamander")
     ap.add_argument("--piano", choices=["salamander", "vcsl"], default="salamander")
     ap.add_argument("--out", required=True)
-    ap.add_argument("--only", nargs="*", default=["strings", "piano", "organ"])
+    ap.add_argument("--only", nargs="*", default=["strings", "piano", "organ", "piano_soft", "vibes", "cymbal"])
     a = ap.parse_args()
     if "strings" in a.only:
         print("Cordas (VSCO 2 CE)")
@@ -342,6 +455,15 @@ def main():
     if "organ" in a.only:
         print("Órgão suave (VCSL)")
         prepare_organ(a.vcsl, os.path.join(a.out, "organ"))
+    if "piano_soft" in a.only:
+        print("Piano suave one-shot (VCSL Steinway B)")
+        prepare_piano_soft(a.vcsl, os.path.join(a.out, "piano_soft"))
+    if "vibes" in a.only:
+        print("Vibrafone one-shot (VCSL)")
+        prepare_vibes(a.vcsl, os.path.join(a.out, "vibes"))
+    if "cymbal" in a.only:
+        print("Pratos (VCSL)")
+        prepare_cymbal(a.vcsl, os.path.join(a.out, "cymbal"))
 
 
 if __name__ == "__main__":

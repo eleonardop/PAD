@@ -40,6 +40,14 @@ enum class SourceId : int {
     StringsSynth,
     PianoCathedral,
     Organ,
+    // ---- v0.3: texturas e transições (one-shots)
+    PianoSoft,       // piano com pedal, dinâmica suave (VCSL Steinway B, CC0)
+    PianoSoftRev,    // o mesmo, invertido (gerado no carregamento)
+    EpTine,          // piano elétrico por FM próprio (gerado no carregamento)
+    EpTineRev,       // EP invertido
+    Vibes,           // vibrafone, baqueta macia (VCSL, CC0)
+    Cymbal,          // pratos com baqueta macia e arco (VCSL, CC0)
+    CymbalRev,       // ataques pp de prato invertidos (reverse cymbal)
     Count
 };
 constexpr int kSourceCount = static_cast<int>(SourceId::Count);
@@ -90,6 +98,11 @@ public:
     // Geração isolada (testes e ferramentas).
     static bool buildPadSynth(SourceId s, float sampleRate, int n, ZoneBank& out);
     static bool loadSampleSet(AssetProvider& assets, const std::string& set, ZoneBank& out);
+    // v0.3: EP por FM (2 pares de operadores) renderizado em zonas one-shot.
+    static bool buildEp(float sampleRate, ZoneBank& out);
+    // v0.3: inverte as zonas (ou só as do tipo `kind`), usando os primeiros `seconds`
+    // segundos de cada uma. O resultado cresce até o ataque original, que fica no fim.
+    static void buildReversed(const ZoneBank& in, ZoneBank& out, double seconds, const char* kind = nullptr);
 
 private:
     struct Slot {

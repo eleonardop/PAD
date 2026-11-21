@@ -13,6 +13,11 @@ constexpr float kLimiterThreshold = 0.891f; // -1 dBFS
 constexpr float kAirDirect = 0.6f;          // parte do Air que vai direto; o resto aparece só no espaço
 constexpr float kShimmerFeedback = 0.30f;   // realimentação máxima do shimmer (Shimmer = 1)
 constexpr float kReverbSwitchSeconds = 0.35f;
+// v0.3: texturas e pratos ficam mais no espaço do que à frente.
+constexpr float kTexDry = 0.60f;       // parte seca das texturas tonais (entra no corpo)
+constexpr float kTexSendExtra = 0.55f; // envio extra das texturas (além do que já vai com o corpo)
+constexpr float kMetalDry = 0.35f;
+constexpr float kMetalSend = 1.20f;
 
 void atomicMax(std::atomic<float>& a, float v) {
     float cur = a.load(std::memory_order_relaxed);
@@ -49,6 +54,12 @@ bool PadEngine::prepare(float sampleRate, double waitSeconds) {
     ctx_.sources = &sources_;
 
     voices_.prepare(sr_);
+    texture_.prepare(sr_);
+    conductor_.prepare(ctx_.controlRate);
+    tape_.prepare(sr_);
+    metalHp_.c.highpass(300.0f, 0.707f, sr_);
+    metalLp_.c.lowpass(6500.0f, 0.707f, sr_);
+    metalHp_.reset(); metalLp_.reset();
 
     for (int i = 0; i < kParamCount; ++i) {
         const ParamInfo& info = paramInfo(static_cast<ParamId>(i));
@@ -112,6 +123,14 @@ uint32_t PadEngine::wantedMask() const {
         }
     }
     if (P(ParamId::LayerTexture) > 1e-4f) m |= sourceBit(P(ParamId::TextureType) < 0.5f ? SourceId::PianoCathedral : SourceId::Organ);
+    // v0.3: texturas e transições. O swell manual sempre pode ser pedido, então piano/EP
+    // invertido, pratos e Glass ficam carregados enquanto houver texturas ou transições.
+    const bool keys = P(ParamId::LayerKeys) > 1e-4f, ep = P(ParamId::KeysType) >= 0.5f;
+    const bool transitions = P(ParamId::Bloom) > 1e-4f || keys || P(ParamId::LayerMetal) > 1e-4f;
+    if (keys) m |= sourceBit(ep ? SourceId::EpTine : SourceId::PianoSoft);
+    if (P(ParamId::LayerSparkle) > 1e-4f) m |= sourceBit(SourceId::Vibes);
+    if (P(ParamId::LayerMetal) > 1e-4f || transitions) m |= sourceBit(SourceId::Cymbal) | sourceBit(SourceId::CymbalRev);
+    if (transitions) m |= sourceBit(ep ? SourceId::EpTineRev : SourceId::PianoSoftRev) | sourceBit(SourceId::Glass);
     return m;
 }
 
@@ -145,6 +164,7 @@ bool PadEngine::setKey(int rootPitchClass) { return playChord(rootPitchClass, st
 bool PadEngine::setChordType(ChordType type) { return playChord(uiKey_.load(), type); }
 bool PadEngine::stop() { return pushCommand({CmdType::Stop, 0, 0, 0}); }
 bool PadEngine::panic() { return pushCommand({CmdType::Panic, 0, 0, 0}); }
+bool PadEngine::swell() { return pushCommand({CmdType::Swell, 0, 0, 0}); }
 
 void PadEngine::setParam(ParamId id, float value) {
     const int i = static_cast<int>(id);
@@ -155,6 +175,7 @@ void PadEngine::setParam(ParamId id, float value) {
     switch (id) {
         case ParamId::LayerWarm: case ParamId::LayerVox: case ParamId::LayerAir: case ParamId::LayerShimmer:
         case ParamId::LayerStrings: case ParamId::LayerTexture: case ParamId::StringsSource: case ParamId::TextureType:
+        case ParamId::LayerKeys: case ParamId::KeysType: case ParamId::LayerSparkle: case ParamId::LayerMetal: case ParamId::Bloom:
             refreshWanted();
             break;
         default: break;
@@ -189,6 +210,11 @@ EngineStats PadEngine::readStats() {
     s.glueMaxReductionDb = statGlue_.exchange(0.0f, std::memory_order_relaxed);
     s.load = statLoad_.load(std::memory_order_relaxed);
     s.loadPeak = statLoadPeak_.exchange(0.0f, std::memory_order_relaxed);
+    s.textureVoices = statTexVoices_.load(std::memory_order_relaxed);
+    s.textureEvents = statTexEvents_.load(std::memory_order_relaxed);
+    s.blooms = statBlooms_.load(std::memory_order_relaxed);
+    s.swells = statSwells_.load(std::memory_order_relaxed);
+    s.lifeStage = statStage_.load(std::memory_order_relaxed);
     s.currentKey = uiKey_.load();
     s.currentChord = uiChord_.load();
     s.playing = statPlaying_.load(std::memory_order_relaxed);
@@ -207,10 +233,20 @@ void PadEngine::handleCommands() {
             case CmdType::PlayChord: {
                 const Voicing v = buildVoicing(c.root, static_cast<ChordType>(c.chord));
                 voices_.playChord(v, getParam(ParamId::Attack), getParam(ParamId::CrossfadeTime), getParam(ParamId::Release), ctx_);
+                conductor_.onChord(v, static_cast<ChordType>(c.chord), c.root);
                 break;
             }
-            case CmdType::Stop: voices_.stopAll(getParam(ParamId::Release)); break;
-            case CmdType::Panic: voices_.panic(); break;
+            case CmdType::Stop:
+                voices_.stopAll(getParam(ParamId::Release));
+                conductor_.onStop();
+                texture_.releaseAll(std::max(2.0f, getParam(ParamId::Release)));
+                break;
+            case CmdType::Panic:
+                voices_.panic();
+                conductor_.onStop();
+                texture_.panic();
+                break;
+            case CmdType::Swell: conductor_.onSwell(); break;
         }
     }
 }
@@ -252,6 +288,26 @@ void PadEngine::updateControl() {
         ctx_.evoCut = wave(2, 0.71);
     }
     ctx_.intensity = P(ParamId::Intensity);
+    ctx_.layerKeys = P(ParamId::LayerKeys);
+    ctx_.keysType = P(ParamId::KeysType) < 0.5f ? 0 : 1;
+    ctx_.layerSparkle = P(ParamId::LayerSparkle);
+    ctx_.layerMetal = P(ParamId::LayerMetal);
+    ctx_.tape = P(ParamId::Tape);
+    ctx_.activity = P(ParamId::Activity);
+    ctx_.bloom = P(ParamId::Bloom);
+    ctx_.bloomChance = P(ParamId::BloomChance);
+    ctx_.swellTime = P(ParamId::SwellTime);
+    // Maestro: decide eventos e devolve a "segunda camada" e os deslocamentos do organismo.
+    conductor_.tick(ctx_, sources_, texture_);
+    {
+        const ConductorOut& co = conductor_.out();
+        ctx_.layerStrings *= co.strings;
+        ctx_.layerVox *= co.vox;
+        ctx_.layerShimmer *= co.glass;
+        ctx_.brightness = clampf(ctx_.brightness + co.bright, 0.0f, 1.0f);
+        sendBoost_ = co.send;
+        baseWidthBoost_ = co.width;
+    }
     ctx_.stringsSource = P(ParamId::StringsSource) < 0.5f ? 0 : 1;
     ctx_.textureType = P(ParamId::TextureType) < 0.5f ? 0 : 1;
 
@@ -298,6 +354,8 @@ void PadEngine::renderSubBlock(float* out, int n) {
         padL_[i] = padR_[i] = airL_[i] = airR_[i] = shimL_[i] = shimR_[i] = lowL_[i] = lowR_[i] = wetL_[i] = wetR_[i] = 0.0f;
     Buses buses{padL_.data(), padR_.data(), airL_.data(), airR_.data(), shimL_.data(), shimR_.data(), lowL_.data(), lowR_.data()};
     voices_.render(ctx_, buses, n);
+    for (int i = 0; i < n; ++i) texL_[i] = texR_[i] = metL_[i] = metR_[i] = 0.0f;
+    texture_.render(texL_.data(), texR_.data(), metL_.data(), metR_.data(), n);
 
     const float invN = 1.0f / static_cast<float>(n);
 
@@ -316,6 +374,19 @@ void PadEngine::renderSubBlock(float* out, int n) {
     }
     chorus_ = c1;
 
+    // ---- Texturas tonais entram no corpo depois do ensemble (o chorus borraria o ataque do
+    // piano); pratos passam por passa-alta/passa-baixa fixos do barramento de metal.
+    for (int i = 0; i < n; ++i) {
+        float ml = metL_[i], mr = metR_[i];
+        metalHp_.process(ml, mr);
+        metalLp_.process(ml, mr);
+        metL_[i] = ml;
+        metR_[i] = mr;
+    }
+    // ---- Fita (Vintage): no corpo e nas texturas tonais, mesma modulação nos dois canais.
+    for (int i = 0; i < n; ++i) { padL_[i] += texL_[i] * kTexDry; padR_[i] += texR_[i] * kTexDry; }
+    tape_.process(padL_.data(), padR_.data(), n, ctx_.tape);
+
     // ---- Envio do reverb: corpo + Air (inteiro) + Shimmer + um pouco de grave, filtrado
     const float shimmer = smooth_[static_cast<int>(ParamId::Shimmer)].value();
     const float shimSend = 0.6f + 0.8f * shimmer;
@@ -323,8 +394,10 @@ void PadEngine::renderSubBlock(float* out, int n) {
         float lo = lowHp_.l.process(lowHp_.c, lowL_[i]);
         lo = lowLp_.l.process(lowLp_.c, lo);
         lowL_[i] = lo;
-        float sl = padL_[i] + airL_[i] + shimL_[i] * shimSend + lo * 0.1f;
-        float sr = padR_[i] + airR_[i] + shimR_[i] * shimSend + lo * 0.1f;
+        float sl = (padL_[i] + airL_[i] + shimL_[i] * shimSend + lo * 0.1f) * sendBoost_ +
+                   texL_[i] * kTexSendExtra + metL_[i] * kMetalSend;
+        float sr = (padR_[i] + airR_[i] + shimR_[i] * shimSend + lo * 0.1f) * sendBoost_ +
+                   texR_[i] * kTexSendExtra + metR_[i] * kMetalSend;
         sendHp_.process(sl, sr);
         sendLp_.process(sl, sr);
         sendL_[i] = sl;
@@ -362,7 +435,7 @@ void PadEngine::renderSubBlock(float* out, int n) {
     const float rv = smooth_[static_cast<int>(ParamId::Reverb)].value();
     const float dry1 = 1.0f - 0.3f * rv;
     const float wet1 = 1.3f * rv;
-    const float width1 = smooth_[static_cast<int>(ParamId::Width)].value();
+    const float width1 = smooth_[static_cast<int>(ParamId::Width)].value() + baseWidthBoost_;
     const float mv = smooth_[static_cast<int>(ParamId::MasterVolume)].value();
     const float master1 = mv * mv * presetTrim_.load(std::memory_order_relaxed);
     const float dry0 = dryGain_, wet0 = wetGain_, width0 = width_, master0 = master_;
@@ -370,8 +443,8 @@ void PadEngine::renderSubBlock(float* out, int n) {
 
     for (int i = 0; i < n; ++i) {
         const float k = static_cast<float>(i + 1) * invN;
-        float l = padL_[i] + airL_[i] * kAirDirect + shimL_[i] + lowL_[i];
-        float r = padR_[i] + airR_[i] * kAirDirect + shimR_[i] + lowL_[i];
+        float l = padL_[i] + airL_[i] * kAirDirect + shimL_[i] + lowL_[i] + metL_[i] * kMetalDry;
+        float r = padR_[i] + airR_[i] * kAirDirect + shimR_[i] + lowL_[i] + metR_[i] * kMetalDry;
         lowShelf_.process(l, r);
         warmBell_.process(l, r);
         warmHighCut_.process(l, r);
@@ -436,12 +509,18 @@ void PadEngine::process(float* out, int frames) {
 
     // Uso das fontes (o carregador só libera o que nenhuma voz usa).
     voices_.countSourceUsage(usage_.data());
+    texture_.countSourceUsage(usage_.data());
     sources_.publishUsage(usage_.data());
 
     statVoices_.store(voices_.activeCount(), std::memory_order_relaxed);
     statSteals_.store(voices_.stealCount(), std::memory_order_relaxed);
     statHardSteals_.store(voices_.hardStealCount(), std::memory_order_relaxed);
     statPlaying_.store(voices_.isPlaying(), std::memory_order_relaxed);
+    statTexVoices_.store(texture_.activeCount(), std::memory_order_relaxed);
+    statTexEvents_.store(conductor_.noteEvents() + conductor_.metalEvents(), std::memory_order_relaxed);
+    statBlooms_.store(conductor_.blooms(), std::memory_order_relaxed);
+    statSwells_.store(conductor_.swells(), std::memory_order_relaxed);
+    statStage_.store(static_cast<int>(conductor_.out().stage), std::memory_order_relaxed);
     atomicMax(statPeak_, peakAcc_);
     atomicMin(statLimiter_, limiter_.takeMinGain());
     atomicMax(statGlue_, glue_.takeMaxReductionDb());

@@ -17,7 +17,7 @@ struct CaseResult {
 };
 
 // Progressão G–D–Em–C com troca a cada 3 s (crossfades constantes: o pior caso real de vozes).
-CaseResult runCase(PadEngine& e, const BenchmarkOptions& o) {
+CaseResult runCase(PadEngine& e, const BenchmarkOptions& o, bool swells = false) {
     CaseResult r;
     const auto tl = std::chrono::steady_clock::now();
     e.waitForSources(60.0);
@@ -38,10 +38,11 @@ CaseResult runCase(PadEngine& e, const BenchmarkOptions& o) {
     for (int b = 0; b < static_cast<int>(48000 / bs); ++b) e.process(buf.data(), bs);
     for (int b = 0; b < blocks; ++b) {
         if (b > 0 && b % perChord == 0) { chord = (chord + 1) % 4; e.playChord(roots[chord], types[chord]); }
+        if (swells && b % perChord == perChord / 3) e.swell();
         const auto t0 = std::chrono::steady_clock::now();
         e.process(buf.data(), bs);
         t[static_cast<size_t>(b)] = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count() / budget * 100.0;
-        if (b % 64 == 0) r.maxVoices = std::max(r.maxVoices, e.readStats().activeVoices);
+        if (b % 64 == 0) { const auto st = e.readStats(); r.maxVoices = std::max(r.maxVoices, st.activeVoices + st.textureVoices); }
     }
     double sum = 0;
     for (double v : t) sum += v;
@@ -65,18 +66,24 @@ std::string runBenchmark(PadEngine& e, const BenchmarkOptions& o) {
 
     std::string out;
     char line[256];
-    std::snprintf(line, sizeof line, "Blocos de %d amostras (%.1f ms). Valores = tempo de CPU / duração do bloco.\n",
+    std::snprintf(line, sizeof line, "Blocos de %d amostras (%.1f ms). Valores = tempo de CPU / duração do bloco. *vozes = pad + texturas.\n",
                   o.blockFrames, o.blockFrames / 48.0);
     out += line;
-    out += "caso                         média   p99    pior   vozes  carga das fontes  memória\n";
+    out += "caso                         média   p99    pior   vozes* carga das fontes  memória\n";
     auto report = [&](const char* name, const CaseResult& r) {
         std::snprintf(line, sizeof line, "%-27s %5.1f%% %5.1f%% %6.1f%%  %3d    %5.2f s          %5.0f MB\n", name, r.meanPct,
                       r.p99Pct, r.maxPct, r.maxVoices, r.loadSeconds, r.memBytes / 1e6);
         out += line;
     };
 
-    const int n = o.quick ? 1 : presetCount();
-    for (int p = 0; p < n; ++p) {
+    // v0.3 primeiro (índices 8+), depois os da v0.2.
+    const int total = presetCount();
+    int order[64], n = 0;
+    for (int p = 8; p < total && n < 64; ++p) order[n++] = p;
+    for (int p = 0; p < 8 && p < total && n < 64; ++p) order[n++] = p;
+    if (o.quick) n = 1;
+    for (int k = 0; k < n; ++k) {
+        const int p = order[k];
         e.applyPreset(p);
         char name[64];
         std::snprintf(name, sizeof name, "preset %s", preset(p).name);
@@ -95,6 +102,12 @@ std::string runBenchmark(PadEngine& e, const BenchmarkOptions& o) {
         e.setParam(id, 1.0f);
     e.setParam(ParamId::ReverbType, 2.0f);
     report("pior caso (tudo no máximo)", runCase(e, o));
+    // Pior caso v0.3: tudo acima + texturas, pratos e transições no máximo e swell a cada troca.
+    for (ParamId id : {ParamId::LayerKeys, ParamId::LayerSparkle, ParamId::LayerMetal, ParamId::Activity, ParamId::Bloom,
+                       ParamId::BloomChance, ParamId::Tape})
+        e.setParam(id, 1.0f);
+    e.setParam(ParamId::SwellTime, 2.0f);
+    report("pior caso v0.3 (+texturas)", runCase(e, o, true));
 
     for (int i = 0; i < kParamCount; ++i) e.setParam(static_cast<ParamId>(i), saved[i]);
     e.waitForSources(30.0);

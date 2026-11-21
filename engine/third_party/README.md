@@ -13,6 +13,9 @@ Nenhum código GPL/LGPL/AGPL é usado no motor.
 |---|---|---|---|
 | `strings` | VSCO 2 CE, Versilian Studios (`440300901dfe9275fd84e0b7763af1f8443ae62e`) | CC0 1.0 | 16 zonas, violoncelo/viola/violino em naipe, sustain com vibrato |
 | `organ` | VCSL, Versilian Studios (`c1ea7bcc3c7309650ab0da9d15c9cd1fbc4a4c7e`) | CC0 1.0 | 17 zonas, órgão de tubos, manual quieto |
+| `piano_soft` (v0.3) | VCSL, Grand Piano Steinway B, pedal, vl2 (`c1ea7bcc3c73`) | CC0 1.0 | 15 notas one-shot, Dó4–Mi6 |
+| `vibes` (v0.3) | VCSL, Vibraphone, Soft Mallets v1 (`c1ea7bcc3c73`) | CC0 1.0 | 8 notas one-shot, Mi3–Mi5 |
+| `cymbal` (v0.3) | VCSL, Suspended Cymbal 1 e 2: cresc, roll pp/mp, bow, hit pp (`c1ea7bcc3c73`) | CC0 1.0 | 14 arquivos (lista exata em `docs/sound-design/SAMPLE_LICENSES.md`) |
 | `piano_cathedral` | Salamander Grand Piano V3, Alexander Holm, via sfzinstruments (`3382bf9496bba2486f5ab0de55a264d1dfc38404`) | CC BY 3.0 (atribuição obrigatória; modificações indicadas) | 17 zonas, espectro congelado |
 
 Os samples são gerados por `tools/samplelab/prepare_samples.py` a partir dos repositórios originais. Créditos para o usuário final: `assets/CREDITOS_E_LICENCAS.txt` (aparece no app em "Créditos e licenças dos sons"); textos completos das licenças em `assets/licencas/`.

@@ -25,6 +25,18 @@ indicados.
    com loop e nível ajustados. O autor original não endossa este app.
    Texto da licença: licencas/Salamander_CC-BY-3.0.txt
 
+4) Piano suave (texturas da v0.3) — VCSL, "Grand Piano, Steinway B", com pedal, dinâmica
+   mais suave (Versilian Studios). Licença: CC0 1.0. https://github.com/sgossner/VCSL
+
+5) Vibrafone (brilho da v0.3) — VCSL, "Vibraphone", baqueta macia (Versilian Studios).
+   Licença: CC0 1.0. https://github.com/sgossner/VCSL
+
+6) Pratos (transições da v0.3) — VCSL, "Suspended Cymbal 1" e "Suspended Cymbal 2": rulos
+   crescentes com baqueta macia, rulos pp, arco e ataques pp (Versilian Studios).
+   Licença: CC0 1.0. https://github.com/sgossner/VCSL
+   Os sons invertidos (reverse) do piano e dos pratos são gerados pelo app a partir desses
+   arquivos.
+
 CÓDIGO DE TERCEIROS
 - Reverb algorithm: Cloud Seed by Ghost Note Audio (Cloud Seed Core, licença MIT).
   https://github.com/GhostNoteAudio/CloudSeedCore — licencas/CloudSeed_MIT.txt
@@ -35,7 +47,7 @@ CÓDIGO DE TERCEIROS
   https://github.com/google/oboe
 
 SONS SINTÉTICOS
-As camadas Warm, Vox (coral), Air, Shimmer (Glass), Low e as cordas sintéticas são
-geradas pelo próprio app (síntese PADsynth e wavetable), sem samples de terceiros.
+As camadas Warm, Vox (coral), Air, Shimmer (Glass), Low, as cordas sintéticas e o piano
+elétrico (EP, síntese FM própria) são geradas pelo próprio app, sem samples de terceiros.
 O algoritmo PADsynth foi descrito por Nasca Octavian Paul; a implementação no PAD
 Worship foi escrita do zero a partir da descrição publicada.

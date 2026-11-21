@@ -91,7 +91,7 @@ TEST(motor_fontes_sob_demanda_sem_clique) {
     e.playChord(7, ChordType::Major);
     auto x0 = render(e, 4.0);
     const double before = rmsDb(x0, fr(2.0), fr(4.0)); // acorde parado, sem o coral
-    e.setParam(ParamId::LayerVox, 0.8f);     // pede o coral com o acorde soando
+    e.setParam(ParamId::LayerVox, 1.0f);     // pede o coral com o acorde soando
     e.waitForSources(30.0);
     const size_t memOn = e.readStats().sourcesMemoryBytes;
     auto x = render(e, 3.0);

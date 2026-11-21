@@ -1,0 +1,17 @@
+#! oneshot
+# arquivo nota_midi_raiz frequencia_raiz_hz [tipo] (VCSL Steinway B, pedal, dinâmica suave, CC0)
+pso_060.flac 60 261.5794
+pso_062.flac 62 293.3336
+pso_064.flac 64 329.3807
+pso_066.flac 66 369.4047
+pso_068.flac 68 415.4692
+pso_070.flac 70 466.6409
+pso_072.flac 72 521.9656
+pso_074.flac 74 586.5479
+pso_076.flac 76 659.8569
+pso_078.flac 78 739.4003
+pso_080.flac 80 830.6187
+pso_082.flac 82 933.6155
+pso_084.flac 84 1048.9291
+pso_086.flac 86 1176.0035
+pso_088.flac 88 1318.9595

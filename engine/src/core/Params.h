@@ -46,6 +46,16 @@ enum class ParamId : int32_t {
     Diffusion,         // 0..1
     StringsSource,     // 0 = cordas reais (VSCO 2 CE), 1 = cordas sintéticas (v0.1)
     TextureType,       // 0 = piano "Cathedral", 1 = órgão suave
+    // ---- v0.3 (no fim, para manter os ids anteriores)
+    LayerKeys,         // 0..1  notas esparsas de piano suave/EP geradas pelo maestro (TEXTURE)
+    KeysType,          // 0 = piano suave (VCSL), 1 = EP (FM próprio)
+    LayerSparkle,      // 0..1  notas de vibrafone no registro alto (SPARKLE)
+    LayerMetal,        // 0..1  pratos de baqueta macia nas transições e no ambiente
+    Tape,              // 0..1  caráter de fita (wow/flutter, saturação, perda de agudos)
+    Activity,          // 0..1  frequência das notas de textura
+    Bloom,             // 0..1  intensidade das transições automáticas
+    BloomChance,       // 0..1  frequência das transições automáticas
+    SwellTime,         // segundos até o pico do pre-swell manual
     Count
 };
 
@@ -93,6 +103,15 @@ inline const ParamInfo& paramInfo(ParamId id) {
         {"diffusion", 0.0f, 1.0f, 0.75f, 0.10f},
         {"strings_source", 0.0f, 1.0f, 0.0f, 0.0f},
         {"texture_type", 0.0f, 1.0f, 0.0f, 0.0f},
+        {"layer_keys", 0.0f, 1.0f, 0.0f, 0.05f},
+        {"keys_type", 0.0f, 1.0f, 0.0f, 0.0f},
+        {"layer_sparkle", 0.0f, 1.0f, 0.0f, 0.05f},
+        {"layer_metal", 0.0f, 1.0f, 0.0f, 0.05f},
+        {"tape", 0.0f, 1.0f, 0.0f, 0.10f},
+        {"activity", 0.0f, 1.0f, 0.0f, 0.10f},
+        {"bloom", 0.0f, 1.0f, 0.0f, 0.10f},
+        {"bloom_chance", 0.0f, 1.0f, 0.0f, 0.10f},
+        {"swell_time", 1.5f, 8.0f, 4.0f, 0.0f},
     };
     return kInfo[static_cast<int>(id)];
 }

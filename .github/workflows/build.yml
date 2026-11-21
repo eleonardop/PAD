@@ -17,7 +17,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          fetch-depth: 0   # precisa da branch versao-0.1-motor (v0.1) para a comparação antes/depois
+          fetch-depth: 0   # precisa da branch versao-0.2-som (v0.2) para a comparação v0.2 × v0.3
 
       - uses: actions/setup-python@v5
         with:
@@ -51,14 +51,16 @@ jobs:
           ./build/engine/pad_reverblab reverbs | tee reverbs/cpu.txt
           python3 tools/reverblab/analyze_ir.py reverbs reverbs/medidas.csv | tee reverbs/medidas.txt
 
-      - name: Comparação antes (v0.1) × depois (v0.2), loudness igualado
+      - name: Comparação v0.2 × v0.3 (testes A–M), estéreo e mono, loudness igualado
         run: |
-          git worktree add ../v01 origin/versao-0.1-motor
-          g++ -O2 -std=c++17 -DPAD_V1 -I../v01/engine/src tools/compare/Scenarios.cpp \
-            $(find ../v01/engine/src -name '*.cpp') -lpthread -o scen_v1
-          ./scen_v1 cmp_antes
-          ./build/engine/pad_scenarios cmp_depois
-          python3 tools/compare/make_comparison.py cmp_antes cmp_depois comparacao
+          git worktree add ../v02 origin/versao-0.2-som
+          (cd ../v02 && g++ -O2 -std=c++17 -DPAD_V2 -DBUFFER_SIZE=256 -Iengine/src \
+            "$GITHUB_WORKSPACE/tools/compare/ScenariosV3.cpp" $(find engine/src -name '*.cpp') \
+            engine/third_party/cloudseed/DSP/RandomBuffer.cpp engine/third_party/cloudseed/DSP/Biquad.cpp \
+            -lpthread -o "$GITHUB_WORKSPACE/scen3_v02")
+          ./scen3_v02 cmp_v02 ../v02/assets
+          ./build/engine/pad_scenarios_v3 cmp_v03 assets
+          python3 tools/compare/make_comparison_v3.py cmp_v02 cmp_v03 comparacao_v03
 
       - name: Publicar resultados (testes, desempenho, WAVs)
         uses: actions/upload-artifact@v4
@@ -71,15 +73,16 @@ jobs:
             wav_exemplos/
             reverbs/
 
-      - name: Publicar comparação antes × depois
+      - name: Publicar comparação v0.2 × v0.3 (A–M)
         uses: actions/upload-artifact@v4
         with:
-          name: PAD-comparacao-antes-depois
+          name: PAD-v03-comparacao-A-M
           path: |
-            comparacao/normalizado/
-            comparacao/espectrogramas/
-            comparacao/medicoes.csv
-            comparacao/medicoes.md
+            comparacao_v03/estereo/
+            comparacao_v03/mono/
+            comparacao_v03/espectrogramas/
+            comparacao_v03/medicoes.csv
+            comparacao_v03/medicoes.md
 
   motor-arm64:
     name: Motor C++ (ARM64) — testes e desempenho

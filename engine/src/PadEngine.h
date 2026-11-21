@@ -29,6 +29,9 @@
 #include "dsp/ShimmerLoop.h"
 #include "dsp/Ensemble.h"
 #include "dsp/GlueCompressor.h"
+#include "dsp/TapeCharacter.h"
+#include "core/TexturePlayer.h"
+#include "core/Conductor.h"
 #include "dsp/Limiter.h"
 
 namespace pad {
@@ -43,6 +46,9 @@ struct EngineStats {
     float glueMaxReductionDb = 0.0f;
     float load = 0.0f;            // tempo de processamento / duração do buffer (média móvel)
     float loadPeak = 0.0f;        // pior bloco desde a última leitura
+    int textureVoices = 0;        // v0.3: vozes do TexturePlayer ativas
+    uint32_t textureEvents = 0, blooms = 0, swells = 0;
+    int lifeStage = 0;
     int currentKey = 0;
     int currentChord = 0;
     bool playing = false;
@@ -78,6 +84,8 @@ public:
     bool setChordType(ChordType type);
     bool stop();
     bool panic();
+    // v0.3: pre-swell manual — cresce durante SwellTime, com pico no fim (para trocar o acorde ali).
+    bool swell();
     void setParam(ParamId id, float value);
     float getParam(ParamId id) const;
     void applyPreset(int index);
@@ -94,9 +102,11 @@ public:
     const VoiceManager& voiceManagerForTests() const { return voices_; }
     const RenderContext& contextForTests() const { return ctx_; }
     const SourceLibrary& sourcesForTests() const { return sources_; }
+    const Conductor& conductorForTests() const { return conductor_; }
+    const TexturePlayer& texturesForTests() const { return texture_; }
 
 private:
-    enum class CmdType : uint8_t { PlayChord, Stop, Panic };
+    enum class CmdType : uint8_t { PlayChord, Stop, Panic, Swell };
     struct Command { CmdType type; uint8_t root; uint8_t chord; uint8_t pad; };
 
     struct ReverbSlot {
@@ -137,6 +147,12 @@ private:
     // Barramentos (pré-alocados)
     std::array<float, kSubBlock> padL_{}, padR_{}, airL_{}, airR_{}, shimL_{}, shimR_{}, lowL_{}, lowR_{};
     std::array<float, kSubBlock> sendL_{}, sendR_{}, wetL_{}, wetR_{}, tmpL_{}, tmpR_{}, zero_{};
+    std::array<float, kSubBlock> texL_{}, texR_{}, metL_{}, metR_{};
+    TexturePlayer texture_;
+    Conductor conductor_;
+    TapeCharacter tape_;
+    SvfStereo metalHp_, metalLp_;
+    float baseWidthBoost_ = 0.0f, sendBoost_ = 1.0f;
     std::array<uint16_t, kSourceCount> usage_{};
 
     // Cadeia master
@@ -154,6 +170,8 @@ private:
     // Telemetria
     std::atomic<int> statVoices_{0};
     std::atomic<uint64_t> statSteals_{0}, statHardSteals_{0}, statDropped_{0};
+    std::atomic<int> statTexVoices_{0}, statStage_{0};
+    std::atomic<uint32_t> statTexEvents_{0}, statBlooms_{0}, statSwells_{0};
     std::atomic<float> statLimiter_{1.0f}, statPeak_{0.0f}, statLoad_{0.0f}, statGlue_{0.0f}, statLoadPeak_{0.0f};
     std::atomic<bool> statPlaying_{false};
     float peakAcc_ = 0.0f, loadEma_ = 0.0f;

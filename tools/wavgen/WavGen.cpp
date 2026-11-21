@@ -187,7 +187,7 @@ int main(int argc, char** argv) {
         silenceAndReset(engine, p);
         int idx = 0;
         char name[64];
-        std::snprintf(name, sizeof name, "%02d_preset_%s", 20 + p, preset(p).name);
+        std::snprintf(name, sizeof name, "%02d_preset_%s", p < 8 ? 20 + p : 50 + (p - 8), preset(p).name);
         renderTo(c, name, std::string("Preset ") + preset(p).name + ": " + preset(p).description + " Progressão G–D–Em–C.",
                  40.0, [&](double t) {
                      progression(engine, t, 4.0, idx);

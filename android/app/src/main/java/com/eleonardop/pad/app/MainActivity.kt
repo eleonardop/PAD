@@ -32,7 +32,7 @@ import com.eleonardop.pad.engine.PadParam
 import com.eleonardop.pad.engine.PadPlaybackService
 
 /**
- * BANCADA DE TESTE PROVISÓRIA do motor de áudio (etapas 1 e 2).
+ * BANCADA DE TESTE PROVISÓRIA do motor de áudio (etapas 1, 2 e v0.3).
  * Não é a interface do músico: serve para ouvir o motor no aparelho real, trocar
  * tons/acordes/presets, ajustar todos os parâmetros, medir o desempenho e ver os créditos
  * dos samples. A interface definitiva será construída depois sobre a mesma API [PadEngine].
@@ -82,11 +82,16 @@ class MainActivity : Activity() {
                 perf.text = "Carga do áudio: média ${pct(s.load)}, pior bloco ${pct(s.loadPeak)} (pior desde o início ${pct(worstLoad)})\n" +
                     "Saída ${s.deviceSampleRate} Hz, burst ${s.burstFrames}, buffer ${s.bufferFrames} quadros, " +
                     "falhas de buffer: ${if (s.xRuns < 0) "n/d" else s.xRuns}\n" +
-                    "Fontes na memória: ${"%.0f".format(s.sourcesMemoryMb)} MB" +
+                    "Fontes na memória: ${"%.0f".format(s.sourcesMemoryMb)} MB   texturas: ${s.textureVoices} vozes, " +
+                    "${s.textureEvents} eventos, ${s.blooms} blooms, ${s.swells} swells   estado: ${stageName(s.lifeStage)}\n" +
                     (if (s.sourcesFailed != 0) "   (alguma fonte falhou: usando reserva)" else "")
             }
             ui.postDelayed(this, 500)
         }
+    }
+
+    private fun stageName(s: Int) = when (s) {
+        1 -> "estabelecimento"; 2 -> "expansão"; 3 -> "transformação"; 4 -> "sustentação"; 5 -> "dissolução"; else -> "silêncio"
     }
 
     private fun pct(v: Float) = "%.0f%%".format(v * 100f)
@@ -107,7 +112,7 @@ class MainActivity : Activity() {
             setBackgroundColor(Color.rgb(18, 20, 24))
         }
         root.addView(TextView(this).apply {
-            text = "PAD Worship — bancada de teste do motor (v0.2)"
+            text = "PAD Worship — bancada de teste do motor (v0.3)"
             setTextColor(Color.WHITE); textSize = 18f; typeface = Typeface.DEFAULT_BOLD
         })
         status = TextView(this).apply { setTextColor(Color.rgb(150, 190, 255)); textSize = 13f; setPadding(0, dp(6), 0, dp(2)) }
@@ -118,13 +123,15 @@ class MainActivity : Activity() {
         // Preset e tipo de acorde
         val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         val presetSpinner = Spinner(this)
-        presetSpinner.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, PadEngine.presetNames)
+        val order = PadEngine.presetDisplayOrder
+        presetSpinner.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, order.map { PadEngine.presetNames[it] })
         presetSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(p: AdapterView<*>?, v: View?, pos: Int, id: Long) {
                 if (busy) return
-                PadEngine.applyPreset(pos)
+                val index = order[pos]
+                PadEngine.applyPreset(index)
                 ui.postDelayed({ refreshControls() }, 50)
-                Toast.makeText(this@MainActivity, PadEngine.presetDescription(pos), Toast.LENGTH_SHORT).show()
+                Toast.makeText(this@MainActivity, PadEngine.presetDescription(index), Toast.LENGTH_SHORT).show()
             }
             override fun onNothingSelected(p: AdapterView<*>?) {}
         }
@@ -157,10 +164,16 @@ class MainActivity : Activity() {
             })
         }
         root.addView(grid)
-        root.addView(Button(this).apply {
+        val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        actions.addView(Button(this).apply {
+            text = "SWELL"
+            setOnClickListener { if (PadEngine.isStarted && !busy && currentKey >= 0) PadEngine.swell() }
+        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        actions.addView(Button(this).apply {
             text = "PARAR (release)"
             setOnClickListener { PadEngine.stop(); currentKey = -1; highlightKey() }
-        })
+        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        root.addView(actions)
 
         // Escolhas (fonte das cordas, textura, tipo de reverb)
         section(root, "Fontes e espaço")
@@ -182,6 +195,8 @@ class MainActivity : Activity() {
         val groups = listOf(
             "Camadas" to listOf(PadParam.LAYER_WARM, PadParam.LAYER_VOX, PadParam.LAYER_STRINGS, PadParam.LAYER_TEXTURE,
                 PadParam.LAYER_AIR, PadParam.LAYER_SHIMMER, PadParam.LAYER_LOW),
+            "Texturas e transições (v0.3)" to listOf(PadParam.LAYER_KEYS, PadParam.LAYER_SPARKLE, PadParam.LAYER_METAL,
+                PadParam.ACTIVITY, PadParam.BLOOM, PadParam.BLOOM_CHANCE, PadParam.SWELL_TIME, PadParam.TAPE),
             "Caráter" to listOf(PadParam.EVOLUTION, PadParam.INTENSITY, PadParam.CHORUS, PadParam.WARMTH, PadParam.BRIGHTNESS,
                 PadParam.AIR, PadParam.LOW, PadParam.WIDTH, PadParam.MOVEMENT, PadParam.DETUNE),
             "Reverb" to listOf(PadParam.REVERB, PadParam.REVERB_DECAY, PadParam.REVERB_SIZE, PadParam.REVERB_DAMPING,
@@ -287,7 +302,7 @@ class MainActivity : Activity() {
 
     // Parâmetros de tempo usam escala exponencial na barra (mais precisão nos valores curtos).
     private fun isTime(p: PadParam) = p == PadParam.ATTACK || p == PadParam.RELEASE || p == PadParam.CROSSFADE_TIME ||
-        p == PadParam.REVERB_DECAY
+        p == PadParam.REVERB_DECAY || p == PadParam.SWELL_TIME
 
     private fun toValue(p: PadParam, progress: Int): Float {
         val (min, max) = p.range[0] to p.range[1]

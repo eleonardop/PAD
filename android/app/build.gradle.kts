@@ -11,8 +11,8 @@ android {
         applicationId = "com.eleonardop.pad"
         minSdk = 26          // Android 8.0: AAudio disponível (Oboe usa OpenSL ES só como reserva)
         targetSdk = 35
-        versionCode = 2
-        versionName = "0.2.0-som"
+        versionCode = 3
+        versionName = "0.3.0-ambient"
 
         ndk {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")

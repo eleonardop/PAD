@@ -26,6 +26,10 @@ struct RenderContext {
     // Moduladores lentos comuns a todas as vozes (−1..1): a Evolução move o conjunto inteiro,
     // como uma respiração da seção, em vez de variações independentes que se cancelam.
     float evoMorph = 0.0f, evoMorph2 = 0.0f, evoCut = 0.0f;
+    // v0.3: texturas, transições e caráter
+    float layerKeys = 0, layerSparkle = 0, layerMetal = 0, tape = 0;
+    float activity = 0, bloom = 0, bloomChance = 0, swellTime = 4.0f;
+    int keysType = 0;       // 0 = piano suave, 1 = EP
     int stringsSource = 0;  // 0 = reais, 1 = sintéticas
     int textureType = 0;    // 0 = piano "Cathedral", 1 = órgão
 };

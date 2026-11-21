@@ -11,6 +11,9 @@ set(PAD_ENGINE_SOURCES
     ${CMAKE_CURRENT_LIST_DIR}/src/core/Presets.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/core/WavIO.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/core/Sources.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/src/core/OneShots.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/src/core/TexturePlayer.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/src/core/Conductor.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/tools/Benchmark.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/dsp/Wavetable.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/dsp/Reverb.cpp
@@ -47,6 +50,7 @@ if(NOT ANDROID AND PAD_ENGINE_BUILD_TESTS)
         ${CMAKE_CURRENT_LIST_DIR}/tests/TestsEngine.cpp
         ${CMAKE_CURRENT_LIST_DIR}/tests/TestsSources.cpp
         ${CMAKE_CURRENT_LIST_DIR}/tests/TestsEngineV2.cpp
+        ${CMAKE_CURRENT_LIST_DIR}/tests/TestsV3.cpp
     )
     target_link_libraries(pad_tests PRIVATE pad_engine)
     add_test(NAME pad_tests COMMAND pad_tests)
@@ -60,6 +64,8 @@ if(NOT ANDROID AND PAD_ENGINE_BUILD_TESTS)
     target_link_libraries(pad_scenarios PRIVATE pad_engine)
     target_compile_definitions(pad_scenarios PRIVATE PAD_ASSETS_DIR="${CMAKE_CURRENT_LIST_DIR}/../assets")
     target_link_libraries(pad_wavgen PRIVATE pad_engine)
+    add_executable(pad_scenarios_v3 ${CMAKE_CURRENT_LIST_DIR}/../tools/compare/ScenariosV3.cpp)
+    target_link_libraries(pad_scenarios_v3 PRIVATE pad_engine)
     add_executable(pad_bench ${CMAKE_CURRENT_LIST_DIR}/../tools/bench/Bench.cpp)
     target_link_libraries(pad_bench PRIVATE pad_engine)
     target_compile_definitions(pad_bench PRIVATE PAD_ASSETS_DIR="${CMAKE_CURRENT_LIST_DIR}/../assets")
