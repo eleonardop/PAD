@@ -86,6 +86,8 @@ public:
     bool panic();
     // v0.3: pre-swell manual — cresce durante SwellTime, com pico no fim (para trocar o acorde ali).
     bool swell();
+    // v0.4: semente dos microeventos (por padrão vem do relógio em prepare(): cada execução varia).
+    bool setSeed(uint32_t seed);
     void setParam(ParamId id, float value);
     float getParam(ParamId id) const;
     void applyPreset(int index);
@@ -106,8 +108,8 @@ public:
     const TexturePlayer& texturesForTests() const { return texture_; }
 
 private:
-    enum class CmdType : uint8_t { PlayChord, Stop, Panic, Swell };
-    struct Command { CmdType type; uint8_t root; uint8_t chord; uint8_t pad; };
+    enum class CmdType : uint8_t { PlayChord, Stop, Panic, Swell, Seed };
+    struct Command { CmdType type; uint8_t root; uint8_t chord; uint8_t pad; uint32_t seed = 0; };
 
     struct ReverbSlot {
         std::unique_ptr<ReverbBase> reverb;
@@ -136,7 +138,8 @@ private:
     std::array<Smoother, kParamCount> smooth_;
     // Moduladores globais da Evolução: soma de senos com razões irracionais (quase periódica).
     // Um ruído suave pode passar dezenas de segundos quase parado; aqui o percurso é garantido.
-    std::atomic<float> presetTrim_{1.0f}; // ganho linear do trim do preset atual
+    std::atomic<float> presetTrim_{1.0f};
+    std::array<std::atomic<float>, 10> micro_{}; // paleta de microeventos do preset (v0.4) // ganho linear do trim do preset atual
     double evoPhase_[6] = {0.0, 0.37, 0.71, 0.13, 0.52, 0.89};
 
     SpscRingBuffer<Command, 256> commands_;

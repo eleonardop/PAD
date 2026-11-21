@@ -25,7 +25,9 @@ public:
         mix_ = 0.0f;
     }
     // amount 0..1; processa no lugar. Chamar por sub-bloco (n ≤ 32).
-    void process(float* l, float* r, int n, float amount) {
+    // gust 0..1: "imperfeição" ocasional decidida pelo maestro (uma oscilação de afinação mais
+    // funda por ~1,8 s, como uma fita que puxa) — sem ruído, sem clique.
+    void process(float* l, float* r, int n, float amount, float gust = 0.0f) {
         if (amount <= 1e-4f && lastAmount_ <= 1e-4f && mix_ < 1e-4f) {
             // Mantém a linha cheia para religar sem buraco.
             for (int i = 0; i < n; ++i) { bufL_[w_] = l[i]; bufR_[w_] = r[i]; w_ = (w_ + 1) & kMask; }
@@ -41,7 +43,9 @@ public:
             flutterPhase_ += kTwoPi * 6.5f / sr_;
             if (flutterPhase_ > kTwoPi) flutterPhase_ -= kTwoPi;
             // Até ±0,9 ms de wow (≈ ±6 cents a 0,6 Hz) e ±0,05 ms de flutter.
-            const float dMs = 4.0f + a * (0.9f * wow + 0.05f * std::sin(flutterPhase_));
+            gustPhase_ += kTwoPi * 1.1f / sr_;
+            if (gustPhase_ > kTwoPi) gustPhase_ -= kTwoPi;
+            const float dMs = 4.0f + a * (0.9f * wow + 0.05f * std::sin(flutterPhase_) + 1.3f * gust * std::sin(gustPhase_));
             const float d = dMs * 0.001f * sr_;
             bufL_[w_] = l[i];
             bufR_[w_] = r[i];
@@ -72,7 +76,7 @@ private:
     static constexpr int kSize = 1024, kMask = kSize - 1;
     std::array<float, kSize> bufL_{}, bufR_{};
     int w_ = 0;
-    float sr_ = 48000.0f, flutterPhase_ = 0.0f, lastAmount_ = 0.0f, mix_ = 0.0f, mixK_ = 0.001f;
+    float sr_ = 48000.0f, flutterPhase_ = 0.0f, gustPhase_ = 0.0f, lastAmount_ = 0.0f, mix_ = 0.0f, mixK_ = 0.001f;
     SmoothRandom wow_;
     SvfStereo lp_;
 };

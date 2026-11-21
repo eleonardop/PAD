@@ -34,7 +34,7 @@ struct TexEvent {
     float highpassHz = 20.0f;
     TexBus bus = TexBus::Tonal;
     uint8_t priority = 1;      // 0 brilho, 1 teclas, 2 prato, 3 swell
-    uint8_t group = 0;         // 0 = livre; 1 = partes tonais do swell manual; 2 = bloom
+    uint8_t group = 0;         // 0 = livre; 1 = partes tonais do swell manual; 2 = bloom; 3 = microevento tonal
 };
 
 class TexturePlayer {
@@ -46,6 +46,10 @@ public:
     // Dispara um evento; devolve false se a fonte ainda não está carregada.
     bool trigger(const TexEvent& e, const SourceLibrary& lib);
     void releaseGroup(uint8_t group, float seconds);
+    // v0.4: solta as vozes do grupo cuja nota NÃO pertence ao novo acorde (máscara de 12 bits).
+    void releaseGroupNotInMask(uint8_t group, uint16_t pcMask, float seconds);
+    // v0.4: vozes do grupo ainda soando (para limitar a densidade).
+    int activeInGroup(uint8_t group) const;
     void releaseAll(float seconds);
     void panic();
 
@@ -71,6 +75,7 @@ private:
         float relMul = 0.999f;                       // multiplicador por amostra no release
         float env = 0;                               // ganho atual do envelope
         uint8_t priority = 0, group = 0;
+        int midi = 0;
         TexBus bus = TexBus::Tonal;
         SvfStereo lp, hp;
         uint64_t age = 0;

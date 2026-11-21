@@ -135,6 +135,11 @@ JNIEXPORT jstring JNICALL Java_com_eleonardop_pad_engine_NativeBridge_nativePres
     return env->NewStringUTF(pad::preset(index).name);
 }
 
+// v0.4: categoria do preset ("" = versão anterior, fora da biblioteca principal).
+JNIEXPORT jstring JNICALL Java_com_eleonardop_pad_engine_NativeBridge_nativePresetCategory(JNIEnv* env, jclass, jint index) {
+    return env->NewStringUTF(pad::preset(index).category);
+}
+
 JNIEXPORT jstring JNICALL Java_com_eleonardop_pad_engine_NativeBridge_nativePresetDescription(JNIEnv* env, jclass, jint index) {
     return env->NewStringUTF(pad::preset(index).description);
 }

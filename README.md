@@ -2,9 +2,15 @@
 
 Aplicativo Android de pads ambientais para cultos, ministrações e música ao vivo.
 
-**Versão atual: 0.3 — instrumento de ambient worship.** A interface do músico será uma etapa futura; o app ainda traz uma bancada de teste.
+**Versão atual: 0.4 — refinamento.**
 
-### Novidades da v0.3
+### Novidades da v0.4
+* **Biblioteca enxuta de 8 presets em 4 funções**: FOUNDATION (Warm, Strings), ATMOSPHERE (Air, Ambient), CHARACTER (Vintage, Cinematic), TEXTURES (Soft Piano, Reverse Bloom). Cada um tem corpo, ataque, reverb, largura e microeventos próprios.
+* **Microeventos**: pequenas notas de sino, piano, harmônico, reverse, prato com arco, arco de cordas ou rajada de fita — raros, sem BPM, sem repetição, só com notas do acorde (7ª/9ª só no agudo e quando combinam com a tonalidade). Controle **Microeventos** na tela principal (zero = nenhum).
+* **Interface limpa**: categorias com botões grandes, preset ativo destacado, 5 controles principais; o resto em **Avançado**, incluindo as versões anteriores dos presets (v0.2 e v0.3).
+* Versões anteriores preservadas: branches `versao-0.1-motor`, `versao-0.2-som` e `versao-0.3-ambient`.
+
+### v0.3
 * **Maestro musical**: o motor acompanha a vida de cada acorde (estabelecimento → expansão → transformação → sustentação), faz a segunda camada (cordas, coral, glass) crescer com o tempo e decide transições pela distância harmônica entre os acordes.
 * **Texturas esparsas** com notas só do acorde: piano suave com pedal (VCSL, CC0), EP por FM próprio e vibrafone de baqueta macia (VCSL, CC0).
 * **Transições**: *bloom* automático depois da troca (controlado por intensidade e frequência) e **Swell manual** (botão) com piano/EP invertido, prato crescente e swell harmônico, com pico no fim do tempo escolhido.

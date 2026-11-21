@@ -24,3 +24,14 @@ Formato: decisão — motivo — alternativa descartada.
 - D17 Granular, convolução, phase vocoder em tempo real e physical modeling fora desta etapa (DSP_REFERENCE).
 - D18 Presets v0.2 mantidos no app com o sufixo "(v0.2)", sem texturas, para comparação e rollback sonoro; 8 presets novos com papéis musicais diferentes.
 - D19 Estéreo das texturas por pan complementar entre eventos e deriva lenta em velocidades diferentes; largura extra só durante o bloom (+12% de lado) — sem Haas, sem inversão de fase.
+
+## v0.4 (refinamento)
+- D20 **Microeventos por paleta do preset**, não uma paleta global — cada preset diz quais famílias usa (sino, piano, pluck, harmônico, reverse, metal, arco de cordas, rajada de fita), com que frequência média e em que registro — é o que faz dois presets com o mesmo acorde soarem por motivos diferentes — mais tipos de evento iguais para todos.
+- D21 **Relógio em "unidades de evento"** (taxa × atividade acumulada até um alvo log-normal, 12% de chance de pausa longa) — sem BPM, sem intervalos regulares, e a suavização dos controles não gera intervalos absurdos — sortear um intervalo em segundos no momento da troca.
+- D22 **Tonalidade estimada** (pesos de classes de altura com decaimento × 12 escalas maiores, com limiar de confiança) só para liberar 7ª/9ª em registro alto quando a cor pertence à escala; sem confiança, só notas do acorde — cor sem risco de nota estranha à música — análise da banda por microfone (latência e privacidade).
+- D23 Cooldown por tipo (5–22 s), no máximo 3 microeventos tonais soando, 2,5 s mínimo entre eventos, nada antes de 1,2 s do acorde, quase nada em trocas rápidas (taxa × 0,25 quando os acordes duram < 2,5 s) e 20% de chance de pular — esparsidade garantida por construção, não por sorte.
+- D24 Na troca de acorde, microeventos tonais cujas notas não pertencem ao novo acorde são soltos em 0,6 s; os que pertencem continuam — sem nota velha contra acorde novo, sem corte seco.
+- D25 **Biblioteca de 8 presets em 4 funções** (FOUNDATION, ATMOSPHERE, CHARACTER, TEXTURES), diferenciados na estrutura (camada de corpo, ataque, tipo de reverb, largura, fita, paleta) e não só no EQ — os 16 presets anteriores continuam no motor, fora da tela principal (Avançado → Versões anteriores) — apagar presets antigos (perderia a comparação) ou mantê-los na lista principal (confuso no culto).
+- D26 Trims recalculados para os 8 novos (≈ −20,7 LUFS no teste interno, ±0,05) — nenhum volume geral aumentado.
+- D27 Estalos orgânicos **não** implementados — o pedido os tornava opcionais, e ruído de vinil/fita foi descartado em D16; a "rajada de fita" (variação lenta e curta do wow, idêntica em L e R) dá a imperfeição sem ruído.
+- D28 Interface: 4 categorias × 2 botões grandes, 5 controles principais (Volume, Reverb, Intensidade, Evolução, Microeventos) e o resto em "Avançado" recolhido.

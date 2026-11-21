@@ -19,6 +19,7 @@ internal object NativeBridge {
     @JvmStatic external fun nativeSetKey(handle: Long, root: Int): Boolean
     @JvmStatic external fun nativeStopNotes(handle: Long): Boolean
     @JvmStatic external fun nativeSwell(handle: Long): Boolean
+    @JvmStatic external fun nativePresetCategory(index: Int): String
 
     @JvmStatic external fun nativeSetParam(handle: Long, id: Int, value: Float)
     @JvmStatic external fun nativeGetParam(handle: Long, id: Int): Float

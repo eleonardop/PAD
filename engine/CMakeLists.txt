@@ -51,6 +51,7 @@ if(NOT ANDROID AND PAD_ENGINE_BUILD_TESTS)
         ${CMAKE_CURRENT_LIST_DIR}/tests/TestsSources.cpp
         ${CMAKE_CURRENT_LIST_DIR}/tests/TestsEngineV2.cpp
         ${CMAKE_CURRENT_LIST_DIR}/tests/TestsV3.cpp
+        ${CMAKE_CURRENT_LIST_DIR}/tests/TestsV4.cpp
     )
     target_link_libraries(pad_tests PRIVATE pad_engine)
     add_test(NAME pad_tests COMMAND pad_tests)
@@ -66,6 +67,8 @@ if(NOT ANDROID AND PAD_ENGINE_BUILD_TESTS)
     target_link_libraries(pad_wavgen PRIVATE pad_engine)
     add_executable(pad_scenarios_v3 ${CMAKE_CURRENT_LIST_DIR}/../tools/compare/ScenariosV3.cpp)
     target_link_libraries(pad_scenarios_v3 PRIVATE pad_engine)
+    add_executable(pad_scenarios_refino ${CMAKE_CURRENT_LIST_DIR}/../tools/compare/ScenariosRefino.cpp)
+    target_link_libraries(pad_scenarios_refino PRIVATE pad_engine)
     add_executable(pad_bench ${CMAKE_CURRENT_LIST_DIR}/../tools/bench/Bench.cpp)
     target_link_libraries(pad_bench PRIVATE pad_engine)
     target_compile_definitions(pad_bench PRIVATE PAD_ASSETS_DIR="${CMAKE_CURRENT_LIST_DIR}/../assets")

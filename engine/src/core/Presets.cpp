@@ -93,11 +93,64 @@ const Preset kPresets[] = {
       0.50f, 7.0f, 0.85f, 0.55f, 0.15f,  2.5f, 5.0f, 2.0f, 0.80f,
       0.25f, 0.00f, 0.45f, 0.60f, 0.50f, 2.0f, 0.040f, 0.35f, 0.80f, 0.0f, 0.0f,
       0.50f, 0.0f, 0.25f, 0.45f, 0.0f, 0.40f, 0.60f, 0.55f, 4.0f}, 0.3f},
+    // ---- v0.4: biblioteca principal, 8 presets por função musical (índices 16–23). Todos os
+    // anteriores continuam acima (versões anteriores: comparação e rollback), fora da tela principal.
+    // Paleta de microeventos: bell, piano, pluck, harmonic, reverse, metal, bow, tapeGust, por minuto, registro.
+    {"Warm", "FOUNDATION — quente, encorpado e próximo: plate curto, graves firmes, imagem estreita; quase nada acontece além de uma nota de piano rara.",
+     {0.95f, 0.10f, 0.15f, 0.00f, 0.70f,  0.80f, 0.30f, 0.20f, 0.62f, 0.75f, 0.25f, 0.35f,
+      0.30f, 3.5f, 0.55f, 0.70f, 0.00f,  1.2f, 3.0f, 1.6f, 0.80f,
+      0.10f, 0.00f, 0.30f, 0.25f, 0.45f, 1.0f, 0.015f, 0.45f, 0.70f, 0.0f, 0.0f,
+      0.45f, 0.0f, 0.00f, 0.00f, 0.0f, 0.50f, 0.15f, 0.25f, 4.0f}, 0.3f, "FOUNDATION",
+     {0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.3f, 0.0f, 1.5f, -0.3f}},
+    {"Strings", "FOUNDATION — naipe de cordas como corpo, entrada lenta de arco; as cordas respiram em crescendos e harmônicos surgem no alto.",
+     {0.20f, 0.10f, 1.00f, 0.05f, 0.35f,  0.55f, 0.50f, 0.30f, 0.45f, 1.00f, 0.55f, 0.30f,
+      0.45f, 6.0f, 0.80f, 0.55f, 0.05f,  3.5f, 6.0f, 2.6f, 0.80f,
+      0.10f, 0.00f, 0.15f, 0.70f, 0.55f, 2.0f, 0.035f, 0.45f, 0.80f, 0.0f, 0.0f,
+      0.35f, 0.0f, 0.35f, 0.00f, 0.0f, 0.50f, 0.45f, 0.45f, 5.0f}, -1.9f, "FOUNDATION",
+     {0.0f, 0.35f, 0.0f, 0.6f, 0.2f, 0.0f, 1.0f, 0.0f, 3.0f, 0.0f}},
+    {"Air", "ATMOSPHERE — aberto e leve, pouco grave, glass e ar no alto; sinos de vibrafone e harmônicos aparecem de vez em quando.",
+     {0.30f, 0.75f, 0.10f, 0.55f, 0.20f,  0.35f, 0.62f, 0.75f, 0.40f, 1.20f, 0.55f, 0.50f,
+      0.58f, 8.0f, 0.85f, 0.40f, 0.35f,  2.5f, 6.0f, 2.4f, 0.78f,
+      0.25f, 0.00f, 0.50f, 0.60f, 0.50f, 2.0f, 0.050f, 0.25f, 0.80f, 0.0f, 0.0f,
+      0.00f, 0.0f, 0.70f, 0.25f, 0.0f, 0.50f, 0.40f, 0.45f, 5.0f}, 7.1f, "ATMOSPHERE",
+     {1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.2f, 0.0f, 0.0f, 4.0f, 0.6f}},
+    {"Ambient", "ATMOSPHERE — profundo e difuso: entrada muito lenta, cauda de 14 s, movimento lento; texturas invertidas e prato com arco, bem espaçados.",
+     {0.45f, 0.45f, 0.25f, 0.30f, 0.40f,  0.55f, 0.28f, 0.55f, 0.48f, 1.15f, 0.85f, 0.55f,
+      0.80f, 14.0f, 1.00f, 0.65f, 0.25f,  7.0f, 10.0f, 4.0f, 0.78f,
+      0.50f, 0.00f, 0.65f, 0.90f, 0.40f, 2.0f, 0.060f, 0.20f, 0.90f, 0.0f, 0.0f,
+      0.40f, 0.0f, 0.40f, 0.45f, 0.0f, 0.50f, 0.50f, 0.40f, 7.0f}, 3.6f, "ATMOSPHERE",
+     {0.2f, 0.0f, 0.0f, 0.6f, 1.0f, 0.8f, 0.0f, 0.0f, 1.5f, 0.0f}},
+    {"Vintage", "CHARACTER — escuro e envelhecido: EP de FM, órgão, cordas de máquina, fita com pequenas oscilações e plate; notas de EP curtas.",
+     {0.70f, 0.05f, 0.30f, 0.00f, 0.55f,  0.85f, 0.25f, 0.10f, 0.55f, 0.85f, 0.50f, 0.70f,
+      0.38f, 3.8f, 0.55f, 0.75f, 0.00f,  1.5f, 3.0f, 1.6f, 0.80f,
+      0.00f, 0.45f, 0.85f, 0.45f, 0.50f, 1.0f, 0.020f, 0.45f, 0.60f, 1.0f, 1.0f,
+      0.55f, 1.0f, 0.00f, 0.00f, 0.85f, 0.50f, 0.20f, 0.30f, 3.0f}, 0.9f, "CHARACTER",
+     {0.0f, 0.8f, 0.7f, 0.0f, 0.3f, 0.0f, 0.0f, 1.0f, 3.5f, -0.4f}},
+    {"Cinematic", "CHARACTER — evolução que se percebe: cordas e coral crescem, sala enorme, blooms fortes nas mudanças grandes, reverses e pratos pontuais.",
+     {0.75f, 0.20f, 0.60f, 0.15f, 0.85f,  0.65f, 0.36f, 0.35f, 0.70f, 1.15f, 0.50f, 0.45f,
+      0.62f, 11.0f, 1.00f, 0.60f, 0.15f,  3.0f, 7.0f, 2.8f, 0.80f,
+      0.55f, 0.00f, 0.35f, 0.90f, 0.60f, 2.0f, 0.060f, 0.40f, 0.85f, 0.0f, 0.0f,
+      0.50f, 0.0f, 0.30f, 0.60f, 0.0f, 0.50f, 0.90f, 0.80f, 4.0f}, -1.9f, "CHARACTER",
+     {0.0f, 0.5f, 0.0f, 0.4f, 0.8f, 0.6f, 0.8f, 0.0f, 2.5f, 0.0f}},
+    {"Soft Piano", "TEXTURES — piano suave com pedal à frente, em notas esparsas no alto, com o pad atrás; às vezes um sino ou um piano invertido.",
+     {0.55f, 0.10f, 0.12f, 0.00f, 0.40f,  0.70f, 0.38f, 0.25f, 0.50f, 0.95f, 0.35f, 0.35f,
+      0.50f, 6.0f, 0.80f, 0.60f, 0.00f,  2.0f, 4.0f, 2.0f, 0.80f,
+      0.00f, 0.00f, 0.25f, 0.40f, 0.45f, 2.0f, 0.030f, 0.40f, 0.80f, 0.0f, 0.0f,
+      0.90f, 0.0f, 0.25f, 0.00f, 0.0f, 0.50f, 0.30f, 0.35f, 4.0f}, 5.2f, "TEXTURES",
+     {0.2f, 1.0f, 0.0f, 0.0f, 0.25f, 0.0f, 0.0f, 0.0f, 7.0f, -0.2f}},
+    {"Reverse Bloom", "TEXTURES — cada troca floresce: blooms quase sempre, piano invertido crescendo nas notas do acorde, harmônicos e prato ao fundo.",
+     {0.75f, 0.15f, 0.20f, 0.10f, 0.50f,  0.50f, 0.50f, 0.35f, 0.50f, 1.05f, 0.45f, 0.45f,
+      0.55f, 6.5f, 0.80f, 0.50f, 0.10f,  2.0f, 5.0f, 2.2f, 0.80f,
+      0.00f, 0.00f, 0.40f, 0.70f, 0.55f, 2.0f, 0.030f, 0.35f, 0.80f, 0.0f, 0.0f,
+      0.70f, 0.0f, 0.45f, 0.50f, 0.0f, 0.50f, 1.00f, 0.90f, 4.0f}, 1.8f, "TEXTURES",
+     {0.0f, 0.0f, 0.0f, 0.6f, 1.0f, 0.3f, 0.0f, 0.0f, 4.0f, 0.0f}},
 };
 constexpr int kCount = static_cast<int>(sizeof(kPresets) / sizeof(kPresets[0]));
 }
 
 int presetCount() { return kCount; }
+bool presetIsCurrent(int index) { return index >= 0 && index < kCount && kPresets[index].category[0] != 0; }
+
 const Preset& preset(int index) { return kPresets[index < 0 ? 0 : (index >= kCount ? kCount - 1 : index)]; }
 
 } // namespace pad

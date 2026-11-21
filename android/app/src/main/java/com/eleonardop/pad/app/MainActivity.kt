@@ -9,10 +9,12 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
@@ -32,24 +34,36 @@ import com.eleonardop.pad.engine.PadParam
 import com.eleonardop.pad.engine.PadPlaybackService
 
 /**
- * BANCADA DE TESTE PROVISÓRIA do motor de áudio (etapas 1, 2 e v0.3).
- * Não é a interface do músico: serve para ouvir o motor no aparelho real, trocar
- * tons/acordes/presets, ajustar todos os parâmetros, medir o desempenho e ver os créditos
- * dos samples. A interface definitiva será construída depois sobre a mesma API [PadEngine].
+ * Tela do PAD Worship (v0.4).
+ *
+ * Principal: biblioteca de 8 sons em 4 categorias, tom, tipo de acorde, SWELL/PARAR e cinco
+ * controles (Volume, Reverb, Intensidade, Evolução, Microeventos). Todo o resto — parâmetros
+ * avançados, versões anteriores dos presets, desempenho e créditos — fica em "Avançado".
  */
 class MainActivity : Activity() {
 
     private val ui = Handler(Looper.getMainLooper())
     private lateinit var status: TextView
+    private lateinit var description: TextView
     private lateinit var perf: TextView
+    private lateinit var advanced: LinearLayout
+    private lateinit var advancedToggle: Button
     private val sliders = mutableMapOf<PadParam, Pair<SeekBar, TextView>>()
     private val choices = mutableMapOf<PadParam, Spinner>()
+    private val presetButtons = mutableMapOf<Int, Button>()
     private var chordType = ChordType.PAD5
     private var currentKey = -1
+    private var currentPreset = -1
     private val keyButtons = mutableListOf<Button>()
-    private var busy = false          // teste de desempenho em andamento
-    private var refreshing = false    // evita reenviar valores ao atualizar os controles
+    private var busy = false
+    private var refreshing = false
     private var worstLoad = 0f
+
+    private val bg = Color.rgb(16, 18, 22)
+    private val panel = Color.rgb(30, 33, 40)
+    private val accent = Color.rgb(222, 178, 92)
+    private val keyActive = Color.rgb(40, 110, 220)
+    private val mainParams = listOf(PadParam.MASTER_VOLUME, PadParam.REVERB, PadParam.INTENSITY, PadParam.EVOLUTION, PadParam.ACTIVITY)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -59,10 +73,10 @@ class MainActivity : Activity() {
         if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
             requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1)
         }
-        status.text = "Preparando o motor de áudio (gerando timbres e lendo samples)..."
+        status.text = "Preparando os sons..."
         PadEngine.start { ok ->
-            status.text = if (ok) "Motor pronto." else "Não foi possível abrir a saída de áudio."
-            if (ok) refreshControls()
+            status.text = if (ok) "Pronto. Escolha um som e um tom." else "Não foi possível abrir a saída de áudio."
+            if (ok) selectPreset(PadEngine.library.firstOrNull()?.second?.firstOrNull() ?: 0)
         }
         ui.post(statsTick)
     }
@@ -77,64 +91,77 @@ class MainActivity : Activity() {
             if (PadEngine.isStarted && !busy) {
                 val s = PadEngine.stats()
                 worstLoad = maxOf(worstLoad, s.loadPeak)
-                val key = if (currentKey >= 0) PadEngine.noteNames[currentKey] else "-"
-                status.text = "Tom: $key  ${chordType.label}   ${if (s.playing) "tocando" else "parado"}   vozes: ${s.activeVoices}"
-                perf.text = "Carga do áudio: média ${pct(s.load)}, pior bloco ${pct(s.loadPeak)} (pior desde o início ${pct(worstLoad)})\n" +
-                    "Saída ${s.deviceSampleRate} Hz, burst ${s.burstFrames}, buffer ${s.bufferFrames} quadros, " +
-                    "falhas de buffer: ${if (s.xRuns < 0) "n/d" else s.xRuns}\n" +
-                    "Fontes na memória: ${"%.0f".format(s.sourcesMemoryMb)} MB   texturas: ${s.textureVoices} vozes, " +
-                    "${s.textureEvents} eventos, ${s.blooms} blooms, ${s.swells} swells   estado: ${stageName(s.lifeStage)}\n" +
-                    (if (s.sourcesFailed != 0) "   (alguma fonte falhou: usando reserva)" else "")
+                val key = if (currentKey >= 0) "${PadEngine.noteNames[currentKey]} ${chordType.label}" else "—"
+                val name = if (currentPreset >= 0) PadEngine.presetNames[currentPreset] else ""
+                status.text = "$name   ·   $key   ·   ${if (s.playing) "tocando" else "parado"}"
+                if (advanced.visibility == View.VISIBLE) {
+                    perf.text = "Carga do áudio (callback real): média ${pct(s.load)}, pior bloco ${pct(s.loadPeak)}, pior desde o início ${pct(worstLoad)}\n" +
+                        "Falhas de buffer (Android): ${if (s.xRuns < 0) "n/d" else s.xRuns}   ·   saída ${s.deviceSampleRate} Hz, burst ${s.burstFrames}\n" +
+                        "Vozes: pad ${s.activeVoices}, texturas ${s.textureVoices}   ·   eventos ${s.textureEvents}, blooms ${s.blooms}, swells ${s.swells}\n" +
+                        "Fontes na memória: ${"%.0f".format(s.sourcesMemoryMb)} MB" +
+                        (if (s.sourcesFailed != 0) "   (alguma fonte falhou: usando reserva)" else "")
+                }
             }
             ui.postDelayed(this, 500)
         }
     }
 
-    private fun stageName(s: Int) = when (s) {
-        1 -> "estabelecimento"; 2 -> "expansão"; 3 -> "transformação"; 4 -> "sustentação"; 5 -> "dissolução"; else -> "silêncio"
-    }
-
     private fun pct(v: Float) = "%.0f%%".format(v * 100f)
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
 
-    private fun section(root: LinearLayout, title: String) {
-        root.addView(TextView(this).apply {
-            text = title
-            setTextColor(Color.rgb(230, 200, 120)); textSize = 15f; typeface = Typeface.DEFAULT_BOLD
-            setPadding(0, dp(16), 0, dp(4))
-        })
+    private fun rounded(color: Int, radius: Int = 10, stroke: Int = 0) = GradientDrawable().apply {
+        setColor(color)
+        cornerRadius = dp(radius).toFloat()
+        if (stroke != 0) setStroke(dp(2), stroke)
+    }
+
+    private fun label(text: String, size: Float = 12f, color: Int = Color.rgb(150, 156, 168), bold: Boolean = false) =
+        TextView(this).apply {
+            this.text = text
+            textSize = size
+            setTextColor(color)
+            if (bold) typeface = Typeface.DEFAULT_BOLD
+        }
+
+    private fun sectionTitle(t: String) = label(t, 11f, accent, true).apply {
+        setPadding(dp(2), dp(14), 0, dp(4))
+        letterSpacing = 0.12f
     }
 
     private fun buildUi(): View {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(16), dp(16), dp(16), dp(16))
-            setBackgroundColor(Color.rgb(18, 20, 24))
+            setPadding(dp(16), dp(14), dp(16), dp(24))
+            setBackgroundColor(bg)
         }
-        root.addView(TextView(this).apply {
-            text = "PAD Worship — bancada de teste do motor (v0.3)"
-            setTextColor(Color.WHITE); textSize = 18f; typeface = Typeface.DEFAULT_BOLD
-        })
-        status = TextView(this).apply { setTextColor(Color.rgb(150, 190, 255)); textSize = 13f; setPadding(0, dp(6), 0, dp(2)) }
+        root.addView(label("PAD Worship", 20f, Color.WHITE, true))
+        status = label("", 13f, Color.rgb(150, 190, 255)).apply { setPadding(0, dp(4), 0, dp(4)) }
         root.addView(status)
-        perf = TextView(this).apply { setTextColor(Color.rgb(140, 150, 160)); textSize = 11f; setPadding(0, 0, 0, dp(8)) }
-        root.addView(perf)
 
-        // Preset e tipo de acorde
-        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        val presetSpinner = Spinner(this)
-        val order = PadEngine.presetDisplayOrder
-        presetSpinner.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, order.map { PadEngine.presetNames[it] })
-        presetSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(p: AdapterView<*>?, v: View?, pos: Int, id: Long) {
-                if (busy) return
-                val index = order[pos]
-                PadEngine.applyPreset(index)
-                ui.postDelayed({ refreshControls() }, 50)
-                Toast.makeText(this@MainActivity, PadEngine.presetDescription(index), Toast.LENGTH_SHORT).show()
+        // ---- Biblioteca: categorias com dois sons cada
+        for ((cat, indices) in PadEngine.library) {
+            root.addView(sectionTitle(cat))
+            val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+            for (i in indices) {
+                val b = Button(this).apply {
+                    text = PadEngine.presetNames[i]
+                    isAllCaps = false
+                    textSize = 16f
+                    setTextColor(Color.WHITE)
+                    background = rounded(panel)
+                    setOnClickListener { selectPreset(i) }
+                }
+                presetButtons[i] = b
+                row.addView(b, LinearLayout.LayoutParams(0, dp(56), 1f).apply { setMargins(dp(4), dp(2), dp(4), dp(2)) })
             }
-            override fun onNothingSelected(p: AdapterView<*>?) {}
+            root.addView(row)
         }
+        description = label("", 12f).apply { setPadding(dp(4), dp(8), dp(4), dp(6)) }
+        root.addView(description)
+
+        // ---- Tom e acorde
+        val chordRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        chordRow.addView(label("Acorde", 13f, Color.LTGRAY).apply { setPadding(dp(4), 0, dp(12), 0) })
         val chordSpinner = Spinner(this)
         chordSpinner.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, ChordType.entries.map { it.label })
         chordSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
@@ -144,124 +171,178 @@ class MainActivity : Activity() {
             }
             override fun onNothingSelected(p: AdapterView<*>?) {}
         }
-        row.addView(presetSpinner, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        row.addView(chordSpinner, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        root.addView(row)
+        chordRow.addView(chordSpinner, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        root.addView(chordRow)
 
-        // 12 tonalidades
-        val grid = GridLayout(this).apply { columnCount = 4; setPadding(0, dp(10), 0, dp(6)) }
+        val grid = GridLayout(this).apply { columnCount = 4; setPadding(0, dp(6), 0, dp(6)) }
         for (k in 0 until 12) {
             val b = Button(this).apply {
                 text = PadEngine.noteNames[k]
                 textSize = 18f
+                setTextColor(Color.WHITE)
+                background = rounded(panel)
                 setOnClickListener { onKey(k) }
             }
             keyButtons += b
             grid.addView(b, GridLayout.LayoutParams().apply {
-                width = 0; height = dp(64)
+                width = 0; height = dp(60)
                 columnSpec = GridLayout.spec(GridLayout.UNDEFINED, 1f)
                 setMargins(dp(3), dp(3), dp(3), dp(3))
             })
         }
         root.addView(grid)
+
         val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         actions.addView(Button(this).apply {
             text = "SWELL"
+            setTextColor(Color.BLACK)
+            background = rounded(accent)
             setOnClickListener { if (PadEngine.isStarted && !busy && currentKey >= 0) PadEngine.swell() }
-        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        }, LinearLayout.LayoutParams(0, dp(52), 1f).apply { setMargins(dp(3), dp(4), dp(3), dp(4)) })
         actions.addView(Button(this).apply {
-            text = "PARAR (release)"
-            setOnClickListener { PadEngine.stop(); currentKey = -1; highlightKey() }
-        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            text = "PARAR"
+            setTextColor(Color.WHITE)
+            background = rounded(Color.rgb(90, 40, 40))
+            setOnClickListener { PadEngine.stop(); currentKey = -1; highlightKeys() }
+        }, LinearLayout.LayoutParams(0, dp(52), 1f).apply { setMargins(dp(3), dp(4), dp(3), dp(4)) })
         root.addView(actions)
 
-        // Escolhas (fonte das cordas, textura, tipo de reverb)
-        section(root, "Fontes e espaço")
+        // ---- Controles principais
+        root.addView(sectionTitle("CONTROLES"))
+        for (p in mainParams) addSlider(root, p, mainLabel(p))
+
+        // ---- Avançado (recolhido)
+        advancedToggle = Button(this).apply {
+            text = "Avançado  ▸"
+            isAllCaps = false
+            setTextColor(Color.LTGRAY)
+            background = rounded(panel)
+            setOnClickListener { toggleAdvanced() }
+        }
+        root.addView(advancedToggle, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48)).apply { topMargin = dp(16) })
+        advanced = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; visibility = View.GONE }
+        buildAdvanced(advanced)
+        root.addView(advanced)
+        return ScrollView(this).apply { setBackgroundColor(bg); addView(root) }
+    }
+
+    private fun mainLabel(p: PadParam) = when (p) {
+        PadParam.MASTER_VOLUME -> "Volume"
+        PadParam.REVERB -> "Reverb"
+        PadParam.INTENSITY -> "Intensidade"
+        PadParam.EVOLUTION -> "Evolução"
+        PadParam.ACTIVITY -> "Microeventos"
+        else -> p.label
+    }
+
+    private fun buildAdvanced(box: LinearLayout) {
+        box.addView(sectionTitle("VERSÕES ANTERIORES (comparação)"))
+        val legacy = PadEngine.legacyPresets
+        val sp = Spinner(this)
+        sp.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, listOf("— escolher —") + legacy.map { PadEngine.presetNames[it] })
+        sp.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(a: AdapterView<*>?, v: View?, pos: Int, id: Long) {
+                if (pos > 0 && !busy) selectPreset(legacy[pos - 1])
+            }
+            override fun onNothingSelected(a: AdapterView<*>?) {}
+        }
+        box.addView(sp)
+
+        box.addView(sectionTitle("FONTES"))
         for (p in PadParam.entries.filter { it.choices != null }) {
-            root.addView(TextView(this).apply { text = p.label; setTextColor(Color.LTGRAY); textSize = 13f })
-            val sp = Spinner(this)
-            sp.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, p.choices!!)
-            sp.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            box.addView(label(p.label, 13f, Color.LTGRAY))
+            val s = Spinner(this)
+            s.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, p.choices!!)
+            s.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
                 override fun onItemSelected(a: AdapterView<*>?, v: View?, pos: Int, id: Long) {
                     if (!refreshing && !busy) PadEngine.setParam(p, pos.toFloat())
                 }
                 override fun onNothingSelected(a: AdapterView<*>?) {}
             }
-            choices[p] = sp
-            root.addView(sp)
+            choices[p] = s
+            box.addView(s)
         }
-
-        // Parâmetros contínuos, agrupados
         val groups = listOf(
-            "Camadas" to listOf(PadParam.LAYER_WARM, PadParam.LAYER_VOX, PadParam.LAYER_STRINGS, PadParam.LAYER_TEXTURE,
+            "CAMADAS" to listOf(PadParam.LAYER_WARM, PadParam.LAYER_VOX, PadParam.LAYER_STRINGS, PadParam.LAYER_TEXTURE,
                 PadParam.LAYER_AIR, PadParam.LAYER_SHIMMER, PadParam.LAYER_LOW),
-            "Texturas e transições (v0.3)" to listOf(PadParam.LAYER_KEYS, PadParam.LAYER_SPARKLE, PadParam.LAYER_METAL,
-                PadParam.ACTIVITY, PadParam.BLOOM, PadParam.BLOOM_CHANCE, PadParam.SWELL_TIME, PadParam.TAPE),
-            "Caráter" to listOf(PadParam.EVOLUTION, PadParam.INTENSITY, PadParam.CHORUS, PadParam.WARMTH, PadParam.BRIGHTNESS,
-                PadParam.AIR, PadParam.LOW, PadParam.WIDTH, PadParam.MOVEMENT, PadParam.DETUNE),
-            "Reverb" to listOf(PadParam.REVERB, PadParam.REVERB_DECAY, PadParam.REVERB_SIZE, PadParam.REVERB_DAMPING,
-                PadParam.PRE_DELAY, PadParam.EARLY_REFLECTIONS, PadParam.DIFFUSION, PadParam.SHIMMER),
-            "Envelope e saída" to listOf(PadParam.ATTACK, PadParam.RELEASE, PadParam.CROSSFADE_TIME, PadParam.MASTER_VOLUME),
+            "TEXTURAS E TRANSIÇÕES" to listOf(PadParam.LAYER_KEYS, PadParam.LAYER_SPARKLE, PadParam.LAYER_METAL,
+                PadParam.BLOOM, PadParam.BLOOM_CHANCE, PadParam.SWELL_TIME, PadParam.TAPE),
+            "CARÁTER" to listOf(PadParam.CHORUS, PadParam.WARMTH, PadParam.BRIGHTNESS, PadParam.AIR, PadParam.LOW,
+                PadParam.WIDTH, PadParam.MOVEMENT, PadParam.DETUNE),
+            "REVERB" to listOf(PadParam.REVERB_DECAY, PadParam.REVERB_SIZE, PadParam.REVERB_DAMPING, PadParam.PRE_DELAY,
+                PadParam.EARLY_REFLECTIONS, PadParam.DIFFUSION, PadParam.SHIMMER),
+            "ENVELOPE" to listOf(PadParam.ATTACK, PadParam.RELEASE, PadParam.CROSSFADE_TIME),
         )
         for ((title, list) in groups) {
-            section(root, title)
-            for (p in list) addSlider(root, p)
+            box.addView(sectionTitle(title))
+            for (p in list) if (p !in mainParams) addSlider(box, p, p.label)
         }
 
-        // Ferramentas
-        section(root, "Ferramentas")
-        root.addView(Button(this).apply {
-            text = "Teste de desempenho rápido (~30 s)"
-            setOnClickListener { benchmark(quick = true) }
-        })
-        root.addView(Button(this).apply {
-            text = "Teste de desempenho completo (~3 min)"
-            setOnClickListener { benchmark(quick = false) }
-        })
-        root.addView(Button(this).apply {
-            text = "Créditos e licenças dos sons"
-            setOnClickListener { showCredits() }
-        })
-        return ScrollView(this).apply { addView(root) }
+        box.addView(sectionTitle("DESEMPENHO E INFORMAÇÕES"))
+        perf = label("", 11f).apply { setPadding(dp(2), dp(2), dp(2), dp(6)) }
+        box.addView(perf)
+        box.addView(Button(this).apply { text = "Teste de desempenho rápido (~30 s)"; setOnClickListener { benchmark(true) } })
+        box.addView(Button(this).apply { text = "Teste de desempenho completo (~4 min)"; setOnClickListener { benchmark(false) } })
+        box.addView(Button(this).apply { text = "Créditos e licenças dos sons"; setOnClickListener { showCredits() } })
     }
 
-    private fun addSlider(root: LinearLayout, p: PadParam) {
-        val label = TextView(this).apply { setTextColor(Color.LTGRAY); textSize = 13f }
+    private fun toggleAdvanced() {
+        val show = advanced.visibility != View.VISIBLE
+        advanced.visibility = if (show) View.VISIBLE else View.GONE
+        advancedToggle.text = if (show) "Avançado  ▾" else "Avançado  ▸"
+    }
+
+    private fun selectPreset(index: Int) {
+        if (busy) return
+        PadEngine.applyPreset(index)
+        currentPreset = index
+        description.text = PadEngine.presetDescription(index)
+        for ((i, b) in presetButtons) {
+            b.background = if (i == index) rounded(Color.rgb(48, 44, 30), stroke = accent) else rounded(panel)
+            b.setTextColor(if (i == index) accent else Color.WHITE)
+        }
+        ui.postDelayed({ refreshControls() }, 50)
+    }
+
+    private fun addSlider(box: LinearLayout, p: PadParam, title: String) {
+        val text = label("", 13f, Color.LTGRAY)
         val bar = SeekBar(this).apply { max = 1000 }
         bar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(s: SeekBar?, progress: Int, fromUser: Boolean) {
                 val v = toValue(p, progress)
                 if (fromUser && !busy) PadEngine.setParam(p, v)
-                label.text = "${p.label}: ${"%.2f".format(v)}"
+                text.text = "$title: ${format(p, v)}"
             }
             override fun onStartTrackingTouch(s: SeekBar?) {}
             override fun onStopTrackingTouch(s: SeekBar?) {}
         })
-        sliders[p] = bar to label
-        root.addView(label)
-        root.addView(bar)
+        sliders[p] = bar to text
+        box.addView(text)
+        box.addView(bar)
+    }
+
+    private fun format(p: PadParam, v: Float) = when {
+        isTime(p) || p == PadParam.PRE_DELAY -> "%.2f s".format(v)
+        else -> "%.0f%%".format(100f * (v - p.range[0]) / (p.range[1] - p.range[0]))
     }
 
     private fun onKey(k: Int) {
         if (!PadEngine.isStarted || busy) return
-        PadPlaybackService.ensureRunning(this) // mantém o áudio com a tela desligada
+        PadPlaybackService.ensureRunning(this)
         PadEngine.playChord(k, chordType)
         currentKey = k
-        highlightKey()
+        highlightKeys()
     }
 
-    private fun highlightKey() {
-        keyButtons.forEachIndexed { i, b ->
-            b.setBackgroundColor(if (i == currentKey) Color.rgb(40, 110, 220) else Color.rgb(55, 58, 66))
-            b.setTextColor(Color.WHITE)
-        }
+    private fun highlightKeys() {
+        keyButtons.forEachIndexed { i, b -> b.background = rounded(if (i == currentKey) keyActive else panel) }
     }
 
     private fun benchmark(quick: Boolean) {
         if (!PadEngine.isStarted || busy) return
         busy = true
         currentKey = -1
-        highlightKey()
+        highlightKeys()
         status.text = "Teste de desempenho em andamento: o som fica desligado até terminar..."
         val device = "Aparelho: ${Build.MANUFACTURER} ${Build.MODEL}, Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})" +
             (if (Build.VERSION.SDK_INT >= 31) ", processador ${Build.SOC_MANUFACTURER} ${Build.SOC_MODEL}" else "") +
@@ -269,10 +350,9 @@ class MainActivity : Activity() {
         PadEngine.runBenchmark(quick) { report ->
             busy = false
             status.text = "Teste concluído."
-            refreshControls()
+            if (currentPreset >= 0) selectPreset(currentPreset)
             val text = device + report +
-                "\nObservação: o teste roda num thread comum, não no thread de áudio de alta prioridade; " +
-                "a carga real durante o uso aparece no topo da tela (\"Carga do áudio\")."
+                "\nEste teste roda fora do áudio (thread comum). A carga real do callback aparece em Avançado → Desempenho."
             AlertDialog.Builder(this)
                 .setTitle("Resultado do teste de desempenho")
                 .setMessage(text)
@@ -300,7 +380,6 @@ class MainActivity : Activity() {
             .show()
     }
 
-    // Parâmetros de tempo usam escala exponencial na barra (mais precisão nos valores curtos).
     private fun isTime(p: PadParam) = p == PadParam.ATTACK || p == PadParam.RELEASE || p == PadParam.CROSSFADE_TIME ||
         p == PadParam.REVERB_DECAY || p == PadParam.SWELL_TIME
 
@@ -320,9 +399,8 @@ class MainActivity : Activity() {
     private fun refreshControls() {
         refreshing = true
         for ((p, pair) in sliders) pair.first.progress = toProgress(p, PadEngine.getParam(p))
-        for ((p, sp) in choices) sp.setSelection(Math.round(PadEngine.getParam(p)).coerceIn(0, p.choices!!.size - 1))
-        // Os Spinners avisam a mudança depois; libera o envio só quando a fila de UI esvaziar.
+        for ((p, s) in choices) s.setSelection(Math.round(PadEngine.getParam(p)).coerceIn(0, p.choices!!.size - 1))
         ui.post { refreshing = false }
-        highlightKey()
+        highlightKeys()
     }
 }
