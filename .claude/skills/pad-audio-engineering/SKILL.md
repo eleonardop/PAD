@@ -43,6 +43,12 @@ approved; the user decides by listening.
 - Textures sit ≥ 8 dB under the pad; presets are loudness-trimmed (`Preset::trimDb`) to ±0.5 dB.
 - Never compensate a weak source with reverb.
 
+## v0.4 additions
+- Presets 0–7 are v0.2, 8–15 v0.3, 16–23 the v0.4 library (category non-empty = shown on the main screen). Never reorder; append new presets at the end.
+- Microevents live in `Conductor::microEvent()`; each preset carries a `MicroPalette`. Keep them sparse: cooldowns per type, ≤3 tonal voices in group 3, release on chord change. Colors (7th/9th) only ≥ MIDI 76 and only when the estimated key is confident.
+- `PadEngine::setSeed()` makes runs reproducible; tests and listening WAVs always set it.
+- Listening package: `pad_scenarios_refino` + `tools/compare/make_refino_package.py` (-20 LUFS, TP ≤ -1, originals kept, mono without renormalizing).
+
 ## Licensing
 Only CC0 / public domain / licenses explicitly allowing commercial redistribution, verified on
 the specific file's repository. No GPL/LGPL/AGPL code (JUCE, Surge excluded). Update
