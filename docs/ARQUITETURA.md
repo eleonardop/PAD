@@ -251,7 +251,7 @@ saída = (seco·(1−0,3·rv) + molhado·1,3·rv)·1,70 ─► M/S (graves < 140
 * **Shimmer** fora do reverb, com banda limitada: as oitavas sobem pela cauda sem virar chiado.
 * **Compressor de cola**: limiar −17 dB, razão 1,6, joelho 8 dB, ataque 40 ms, release 450 ms;
   só segura picos de soma de camadas, quase não age no uso normal.
-* **Trim por preset** (`Preset::trimDb`): todos os presets ficam a ±0,5 dB de −20 LUFS na
+* **Trim por preset** (`Preset::trimDb`): os presets ficam a 0,6 dB uns dos outros (−21,0 a −20,4 LUFS) na
   progressão de teste, sem mexer no Volume geral do operador.
 
 ### 12.4 Parâmetros novos (ids 21 a 31, acrescentados no fim)
