@@ -30,6 +30,9 @@ struct RenderContext {
     float layerKeys = 0, layerSparkle = 0, layerMetal = 0, tape = 0;
     float activity = 0, bloom = 0, bloomChance = 0, swellTime = 4.0f;
     int keysType = 0;       // 0 = piano suave, 1 = EP
+    // v0.4: paleta de microeventos do preset atual (cópia por bloco de controle)
+    float microBell = 0, microPiano = 0, microPluck = 0, microHarmonic = 0, microReverse = 0, microMetal = 0;
+    float microBow = 0, microTapeGust = 0, microPerMinute = 0, microHighBias = 0;
     int stringsSource = 0;  // 0 = reais, 1 = sintéticas
     int textureType = 0;    // 0 = piano "Cathedral", 1 = órgão
 };

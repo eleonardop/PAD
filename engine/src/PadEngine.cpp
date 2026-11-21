@@ -55,7 +55,8 @@ bool PadEngine::prepare(float sampleRate, double waitSeconds) {
 
     voices_.prepare(sr_);
     texture_.prepare(sr_);
-    conductor_.prepare(ctx_.controlRate);
+    conductor_.prepare(ctx_.controlRate,
+                       static_cast<uint64_t>(std::chrono::steady_clock::now().time_since_epoch().count()) | 1u);
     tape_.prepare(sr_);
     metalHp_.c.highpass(300.0f, 0.707f, sr_);
     metalLp_.c.lowpass(6500.0f, 0.707f, sr_);
@@ -131,6 +132,14 @@ uint32_t PadEngine::wantedMask() const {
     if (P(ParamId::LayerSparkle) > 1e-4f) m |= sourceBit(SourceId::Vibes);
     if (P(ParamId::LayerMetal) > 1e-4f || transitions) m |= sourceBit(SourceId::Cymbal) | sourceBit(SourceId::CymbalRev);
     if (transitions) m |= sourceBit(ep ? SourceId::EpTineRev : SourceId::PianoSoftRev) | sourceBit(SourceId::Glass);
+    // v0.4: fontes pedidas pela paleta de microeventos do preset.
+    auto M = [&](int i) { return micro_[static_cast<size_t>(i)].load(std::memory_order_relaxed) > 0.0f; };
+    if (M(0)) m |= sourceBit(SourceId::Vibes);
+    if (M(1)) m |= sourceBit(ep ? SourceId::EpTine : SourceId::PianoSoft);
+    if (M(2)) m |= sourceBit(SourceId::EpTine);
+    if (M(3)) m |= sourceBit(SourceId::Glass);
+    if (M(4)) m |= sourceBit(ep ? SourceId::EpTineRev : SourceId::PianoSoftRev);
+    if (M(5)) m |= sourceBit(SourceId::Cymbal);
     return m;
 }
 
@@ -165,6 +174,11 @@ bool PadEngine::setChordType(ChordType type) { return playChord(uiKey_.load(), t
 bool PadEngine::stop() { return pushCommand({CmdType::Stop, 0, 0, 0}); }
 bool PadEngine::panic() { return pushCommand({CmdType::Panic, 0, 0, 0}); }
 bool PadEngine::swell() { return pushCommand({CmdType::Swell, 0, 0, 0}); }
+bool PadEngine::setSeed(uint32_t seed) {
+    Command c{CmdType::Seed, 0, 0, 0};
+    c.seed = seed;
+    return pushCommand(c);
+}
 
 void PadEngine::setParam(ParamId id, float value) {
     const int i = static_cast<int>(id);
@@ -196,6 +210,9 @@ void PadEngine::applyPreset(int index) {
         params_[static_cast<size_t>(i)].store(clampf(p.values[i], info.minValue, info.maxValue), std::memory_order_relaxed);
     }
     presetTrim_.store(dbToGain(p.trimDb), std::memory_order_relaxed);
+    const MicroPalette& mp = p.micro;
+    const float pv[10] = {mp.bell, mp.piano, mp.pluck, mp.harmonic, mp.reverse, mp.metal, mp.bow, mp.tapeGust, mp.perMinute, mp.highBias};
+    for (int i = 0; i < 10; ++i) micro_[static_cast<size_t>(i)].store(pv[i], std::memory_order_relaxed);
     refreshWanted();
 }
 
@@ -247,6 +264,7 @@ void PadEngine::handleCommands() {
                 texture_.panic();
                 break;
             case CmdType::Swell: conductor_.onSwell(); break;
+            case CmdType::Seed: conductor_.reseed(c.seed); break;
         }
     }
 }
@@ -297,6 +315,12 @@ void PadEngine::updateControl() {
     ctx_.bloom = P(ParamId::Bloom);
     ctx_.bloomChance = P(ParamId::BloomChance);
     ctx_.swellTime = P(ParamId::SwellTime);
+    {
+        auto M = [&](int i) { return micro_[static_cast<size_t>(i)].load(std::memory_order_relaxed); };
+        ctx_.microBell = M(0); ctx_.microPiano = M(1); ctx_.microPluck = M(2); ctx_.microHarmonic = M(3);
+        ctx_.microReverse = M(4); ctx_.microMetal = M(5); ctx_.microBow = M(6); ctx_.microTapeGust = M(7);
+        ctx_.microPerMinute = M(8); ctx_.microHighBias = M(9);
+    }
     // Maestro: decide eventos e devolve a "segunda camada" e os deslocamentos do organismo.
     conductor_.tick(ctx_, sources_, texture_);
     {
@@ -385,7 +409,7 @@ void PadEngine::renderSubBlock(float* out, int n) {
     }
     // ---- Fita (Vintage): no corpo e nas texturas tonais, mesma modulação nos dois canais.
     for (int i = 0; i < n; ++i) { padL_[i] += texL_[i] * kTexDry; padR_[i] += texR_[i] * kTexDry; }
-    tape_.process(padL_.data(), padR_.data(), n, ctx_.tape);
+    tape_.process(padL_.data(), padR_.data(), n, ctx_.tape, conductor_.out().tapeGust);
 
     // ---- Envio do reverb: corpo + Air (inteiro) + Shimmer + um pouco de grave, filtrado
     const float shimmer = smooth_[static_cast<int>(ParamId::Shimmer)].value();

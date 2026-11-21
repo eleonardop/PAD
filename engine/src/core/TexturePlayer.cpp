@@ -32,6 +32,19 @@ void TexturePlayer::releaseGroup(uint8_t group, float seconds) {
     for (auto& v : v_) if (v.stage != Stage::Free && v.stage != Stage::Release && v.group == group) startRelease(v, seconds);
 }
 
+void TexturePlayer::releaseGroupNotInMask(uint8_t group, uint16_t pcMask, float seconds) {
+    for (auto& v : v_) {
+        if (v.stage == Stage::Free || v.stage == Stage::Release || v.group != group || v.midi <= 0) continue;
+        if (!((pcMask >> (v.midi % 12)) & 1)) startRelease(v, seconds);
+    }
+}
+
+int TexturePlayer::activeInGroup(uint8_t group) const {
+    int n = 0;
+    for (const auto& v : v_) n += (v.stage != Stage::Free && v.stage != Stage::Release && v.group == group);
+    return n;
+}
+
 void TexturePlayer::releaseAll(float seconds) {
     for (auto& v : v_) if (v.stage != Stage::Free && v.stage != Stage::Release) startRelease(v, seconds);
 }
@@ -100,6 +113,7 @@ bool TexturePlayer::trigger(const TexEvent& e, const SourceLibrary& lib) {
     v.holdLeft = e.hold < 0.0f ? -1 : static_cast<int>(e.hold * sr_);
     v.priority = e.priority;
     v.group = e.group;
+    v.midi = e.midi;
     v.bus = e.bus;
     v.lp.c.lowpass(clampf(e.lowpassHz, 200.0f, 20000.0f), 0.707f, sr_);
     v.hp.c.highpass(clampf(e.highpassHz, 10.0f, 4000.0f), 0.707f, sr_);

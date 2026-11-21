@@ -27,11 +27,16 @@ struct ConductorOut {
     float bright = 0.0f;                              // soma no Brilho
     float send = 1.0f;                                // multiplicador do envio ao reverb
     float width = 0.0f;                               // largura extra (fração do lado)
+    float tapeGust = 0.0f;                            // v0.4: "imperfeição" de fita (0..1)
     LifeStage stage = LifeStage::Silent;
     float age = 0.0f;
 };
 
-struct NoteLogEntry { float time; int16_t midi; int8_t rootPc; int8_t chordType; uint8_t instrument; };
+// instrument: 0 teclas (v0.3), 1 brilho (v0.3); v0.4: 10 sino, 11 piano agudo, 12 pluck,
+// 13 harmônico, 14 reverse curto, 15 prato, 16 arco das cordas (sem nota), 17 fita (sem nota).
+struct NoteLogEntry { float time; int16_t midi; int8_t rootPc; int8_t chordType; uint8_t instrument; int8_t keyPc; float absTime; };
+
+enum class MicroType : uint8_t { Bell = 0, Piano, Pluck, Harmonic, Reverse, Metal, Bow, TapeGust, Count };
 
 class Conductor {
 public:
@@ -42,6 +47,7 @@ public:
     void onChord(const Voicing& v, ChordType type, int rootPc);
     void onStop();
     void onSwell();
+    void reseed(uint64_t seed) { rng_.setSeed(seed); }
 
     void tick(const RenderContext& ctx, const SourceLibrary& lib, TexturePlayer& tex);
     const ConductorOut& out() const { return out_; }
@@ -58,6 +64,10 @@ public:
     int logCount() const { return logCount_; }
     const NoteLogEntry& logAt(int i) const { return log_[static_cast<size_t>(i % kLog)]; }
     double now() const { return now_; }
+    // v0.4: tonalidade estimada pelos acordes recentes (−1 = sem confiança) e contagem por tipo.
+    int estimatedKey() const { return keyPc_; }
+    uint32_t microCount(MicroType t) const { return microCounts_[static_cast<size_t>(t)]; }
+    uint32_t microTotal() const { uint32_t n = 0; for (auto c : microCounts_) n += c; return n; }
 
 private:
     void startBloom(const RenderContext& ctx, const SourceLibrary& lib, TexturePlayer& tex, float strength, float d);
@@ -66,6 +76,12 @@ private:
     int chooseNote(int lo, int hi, bool allowNinth, int center);
     float nextInterval(const RenderContext& ctx);
     void logNote(int midi, uint8_t instrument);
+    // v0.4: microeventos
+    void updateKey();
+    uint16_t colorMask(int midiLo) const;
+    int chooseMicroNote(int lo, int hi, bool colors, int center);
+    void microEvent(const RenderContext& ctx, const SourceLibrary& lib, TexturePlayer& tex);
+    float microInterval(const RenderContext& ctx);
 
     float dt_ = 1.0f / 1500.0f;
     double now_ = 0.0;
@@ -88,6 +104,18 @@ private:
     float bloomStrength_ = 0.0f;
     bool swellPending_ = false, swellActive_ = false;
     double swellEnd_ = 0.0;
+
+    // v0.4: microeventos e contexto harmônico
+    std::array<float, 12> pcWeight_{};
+    int keyPc_ = -1;
+    float chordDurEma_ = 6.0f;
+    double nextMicroAt_ = 0.0, lastMicroAt_ = -1e30;   // nextMicroAt_: o mais cedo possível no acorde
+    float microClock_ = 0.0f, microTarget_ = 0.0f;
+    std::array<double, static_cast<size_t>(MicroType::Count)> lastTypeAt_{};
+    int lastType_ = -1, sameTypeRun_ = 0;
+    double bowStart_ = -1e30, gustStart_ = -1e30;
+    float bowStrength_ = 0.0f;
+    std::array<uint32_t, static_cast<size_t>(MicroType::Count)> microCounts_{};
 
     // Saídas suavizadas
     ConductorOut out_;

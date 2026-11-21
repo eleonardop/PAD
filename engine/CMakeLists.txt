@@ -51,6 +51,7 @@ if(NOT ANDROID AND PAD_ENGINE_BUILD_TESTS)
         ${CMAKE_CURRENT_LIST_DIR}/tests/TestsSources.cpp
         ${CMAKE_CURRENT_LIST_DIR}/tests/TestsEngineV2.cpp
         ${CMAKE_CURRENT_LIST_DIR}/tests/TestsV3.cpp
+        ${CMAKE_CURRENT_LIST_DIR}/tests/TestsV4.cpp
     )
     target_link_libraries(pad_tests PRIVATE pad_engine)
     add_test(NAME pad_tests COMMAND pad_tests)
