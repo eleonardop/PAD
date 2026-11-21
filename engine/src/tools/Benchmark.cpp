@@ -89,7 +89,7 @@ std::string runBenchmark(PadEngine& e, const BenchmarkOptions& o) {
         std::snprintf(name, sizeof name, "preset %s", preset(p).name);
         report(name, runCase(e, o));
     }
-    const char* rvNames[3] = {"Warm + reverb Clássico", "Warm + reverb Plate", "Warm + reverb Cloud"};
+    const char* rvNames[3] = {"Warm v0.2 + reverb Clássico", "Warm v0.2 + reverb Plate", "Warm v0.2 + reverb Cloud"};
     for (int k = o.quick ? 1 : 0; k < 3; ++k) {
         e.applyPreset(0);
         e.setParam(ParamId::ReverbType, static_cast<float>(k));

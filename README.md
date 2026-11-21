@@ -2,7 +2,16 @@
 
 Aplicativo Android de pads ambientais para cultos, ministrações e música ao vivo.
 
-**Etapa atual: 2 — qualidade sonora (v0.2).** A interface do músico será uma etapa futura; o app ainda traz uma bancada de teste.
+**Versão atual: 0.3 — instrumento de ambient worship.** A interface do músico será uma etapa futura; o app ainda traz uma bancada de teste.
+
+### Novidades da v0.3
+* **Maestro musical**: o motor acompanha a vida de cada acorde (estabelecimento → expansão → transformação → sustentação), faz a segunda camada (cordas, coral, glass) crescer com o tempo e decide transições pela distância harmônica entre os acordes.
+* **Texturas esparsas** com notas só do acorde: piano suave com pedal (VCSL, CC0), EP por FM próprio e vibrafone de baqueta macia (VCSL, CC0).
+* **Transições**: *bloom* automático depois da troca (controlado por intensidade e frequência) e **Swell manual** (botão) com piano/EP invertido, prato crescente e swell harmônico, com pico no fim do tempo escolhido.
+* **Pratos** de baqueta macia e arco (VCSL, CC0), sempre filtrados e no fundo.
+* **Fita** (wow/flutter/saturação, sem chiado) para o preset Vintage.
+* 8 presets novos com papéis diferentes: Warm Worship, Deep Worship, Cinematic, Ambient, Vintage, Cathedral, Ethereal, Modern Worship. Os 8 da v0.2 continuam no app com "(v0.2)" no nome.
+* Versões anteriores preservadas: branches `versao-0.1-motor` e `versao-0.2-som`.
 
 ## O que já existe
 
@@ -21,11 +30,11 @@ Aplicativo Android de pads ambientais para cultos, ministrações e música ao v
 2. Entre na execução mais recente de **"Compilar e testar"** (com o ✓ verde).
 3. Em **Artifacts**, baixe:
    * `PAD-Worship-APK`: o app para instalar no celular;
-   * `PAD-comparacao-antes-depois`: os mesmos trechos na v0.1 e na v0.2, no mesmo volume percebido, com espectrogramas e medições;
+   * `PAD-v03-comparacao-A-M`: os testes A–M da v0.3 contra a v0.2, no mesmo volume percebido, em estéreo e em mono, com espectrogramas e medições;
    * `PAD-resultados-x86_64`: WAVs de demonstração, medidas dos reverbs e resultado dos testes;
    * `PAD-resultados-arm64`: testes e desempenho em processador ARM.
 
-A versão anterior (v0.1) está preservada na branch `versao-0.1-motor`.
+As versões anteriores estão preservadas nas branches `versao-0.1-motor` e `versao-0.2-som`.
 
 ## Compilar no computador (desenvolvedores)
 
@@ -46,4 +55,6 @@ App Android: abrir a pasta `android/` no Android Studio, ou rodar `gradle assemb
 * [`docs/ARQUITETURA.md`](docs/ARQUITETURA.md): arquitetura, decisões de DSP, regras de tempo real.
 * [`docs/RELATORIO_ETAPA1.md`](docs/RELATORIO_ETAPA1.md): etapa 1 (motor).
 * [`docs/RELATORIO_ETAPA2.md`](docs/RELATORIO_ETAPA2.md): etapa 2 (qualidade sonora): decisões, medições, licenças e limitações.
+* [`docs/RELATORIO_PREPARACAO_V03.md`](docs/RELATORIO_PREPARACAO_V03.md) e [`docs/RELATORIO_V03.md`](docs/RELATORIO_V03.md): pesquisa e entrega da v0.3.
+* [`docs/sound-design/`](docs/sound-design/): pesquisa, técnicas, regras musicais, licenças, arquitetura e decisões (base de conhecimento do projeto).
 * [`engine/third_party/README.md`](engine/third_party/README.md) e [`assets/CREDITOS_E_LICENCAS.txt`](assets/CREDITOS_E_LICENCAS.txt): código e sons de terceiros.

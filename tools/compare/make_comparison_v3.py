@@ -66,37 +66,48 @@ def spectro(ax, path, title):
     ax.set_title(title, fontsize=10)
 
 
+def process_one(args):
+    """Um cenário (v0.2 e/ou v0.3): normaliza, gera mono, mede e desenha. Roda num processo
+    próprio para a memória voltar ao sistema a cada arquivo (arquivos longos em float64)."""
+    n, a_dir, b_dir, out = args
+    pairs = [("v0.3", os.path.join(b_dir, n))]
+    pa = os.path.join(a_dir, n)
+    if os.path.exists(pa):
+        pairs.insert(0, ("v0.2", pa))
+    rows = []
+    for tag, p in pairs:
+        sr, x = am.load(p)
+        g, lim = am.normalize_to_lufs(p, os.path.join(out, "estereo", tag, n), -20.0, -1.0)
+        y = x * 10 ** (g / 20)
+        mm = 0.5 * (y[:, 0] + y[:, 1])
+        write24(os.path.join(out, "mono", tag, n), sr, np.stack([mm, mm], axis=1))
+        del y, mm
+        met = am.measure(p, 1.0)
+        loss, worst, timbre = mono_metrics(x[int(sr):], sr)
+        met.update(versao=tag, ganho_normalizacao_db=g, limitado_pelo_pico=lim, mono_perda_db=loss,
+                   mono_pior_banda_db=worst, mono_desvio_timbre_db=timbre)
+        rows.append(met)
+    fig, ax = plt.subplots(len(pairs), 1, figsize=(12, 3.6 * len(pairs)), sharex=True, squeeze=False)
+    for i, (tag, p) in enumerate(pairs):
+        spectro(ax[i][0], p, f"{tag} — {n}")
+    ax[-1][0].set_xlabel("s")
+    fig.tight_layout()
+    fig.savefig(os.path.join(out, "espectrogramas", n.replace(".wav", ".png")), dpi=65)
+    plt.close("all")
+    print(n, flush=True)
+    return rows
+
+
 def main():
+    import multiprocessing as mp
     a_dir, b_dir, out = sys.argv[1:4]
     for sub in ("estereo/v0.2", "estereo/v0.3", "mono/v0.2", "mono/v0.3", "espectrogramas"):
         os.makedirs(os.path.join(out, sub), exist_ok=True)
     names = sorted(f for f in os.listdir(b_dir) if f.endswith(".wav"))
     rows = []
-    for n in names:
-        pairs = [("v0.3", os.path.join(b_dir, n))]
-        pa = os.path.join(a_dir, n)
-        if os.path.exists(pa):
-            pairs.insert(0, ("v0.2", pa))
-        for tag, p in pairs:
-            sr, x = am.load(p)
-            g, lim = am.normalize_to_lufs(p, os.path.join(out, "estereo", tag, n), -20.0, -1.0)
-            y = x * 10 ** (g / 20)
-            mm = 0.5 * (y[:, 0] + y[:, 1])
-            write24(os.path.join(out, "mono", tag, n), sr, np.stack([mm, mm], axis=1))
-            met = am.measure(p, 1.0)
-            loss, worst, timbre = mono_metrics(x[int(sr):], sr)
-            met.update(versao=tag, ganho_normalizacao_db=g, limitado_pelo_pico=lim, mono_perda_db=loss,
-                       mono_pior_banda_db=worst, mono_desvio_timbre_db=timbre)
-            rows.append(met)
-        rows_n = len(pairs)
-        fig, ax = plt.subplots(rows_n, 1, figsize=(12, 3.6 * rows_n), sharex=True, squeeze=False)
-        for i, (tag, p) in enumerate(pairs):
-            spectro(ax[i][0], p, f"{tag} — {n}")
-        ax[-1][0].set_xlabel("s")
-        fig.tight_layout()
-        fig.savefig(os.path.join(out, "espectrogramas", n.replace(".wav", ".png")), dpi=65)
-        plt.close(fig)
-        print(n)
+    with mp.get_context("spawn").Pool(processes=1, maxtasksperchild=1) as pool:
+        for r in pool.imap(process_one, [(n, a_dir, b_dir, out) for n in names]):
+            rows.extend(r)
 
     keys = ["arquivo", "versao", "lufs", "lra", "true_peak_db", "clip", "crista_db", "centroide_hz", "acima_10k_db",
             "correlacao_lr", "mono_perda_db", "mono_pior_banda_db", "mono_desvio_timbre_db", "bandas_pct",

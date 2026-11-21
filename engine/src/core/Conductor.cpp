@@ -157,7 +157,7 @@ void Conductor::textureNote(const RenderContext& ctx, const SourceLibrary& lib, 
         if (m < 0) return;
         e.source = SourceId::Vibes;
         e.midi = m;
-        e.level = 0.30f * sparkle * vel;
+        e.level = 0.38f * sparkle * vel;
         e.lowpassHz = 5500.0f + 2000.0f * ctx.brightness;
         e.highpassHz = 300.0f;
         e.release = 2.0f;
@@ -171,7 +171,7 @@ void Conductor::textureNote(const RenderContext& ctx, const SourceLibrary& lib, 
         if (m < 0) return;
         e.source = ctx.keysType == 0 ? SourceId::PianoSoft : SourceId::EpTine;
         e.midi = m;
-        e.level = 0.42f * keys * vel;
+        e.level = 0.60f * keys * vel; // pico das notas ~7 dB abaixo do pad (medido em janelas de 400 ms)
         // Piano "felt": agudos bem fechados; EP um pouco mais aberto.
         e.lowpassHz = ctx.keysType == 0 ? 1800.0f + 2400.0f * ctx.brightness : 3000.0f + 2500.0f * ctx.brightness;
         e.highpassHz = 120.0f;
