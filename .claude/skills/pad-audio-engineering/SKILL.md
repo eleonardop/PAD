@@ -54,6 +54,12 @@ approved; the user decides by listening.
 - New params at the end: `ToneCut` (4-pole post-reverb lowpass, 0 = bypass), `VoicingStyle` (1 = fifth below the root), `LayerGuitar`. Source `GuitarClean` (own Karplus-Strong, built in the loader). MicroType::Guitar with echoes; group-3 cap is 6 only when the guitar palette is active.
 - Listening package: `pad_scenarios_pads` + `make_refino_package.py`.
 
+## v0.6 additions
+- Presets 29–33 = current SOFT PADS (Velvet = 1). 24–28 are the v0.5 versions (category "").
+- `Velvet` param (end of ParamId): envelope-tracking voice cutoff, no ladder resonance/drive, no bus saturation, side high-cut, darker reverb send.
+- Android lifecycle: `PadEngine.release()` destroys the native engine (RW lock around the handle); the foreground service exists only while sound plays (START_NOT_STICKY); exit paths: Sair, notification Encerrar, back without sound, onTaskRemoved. Rotation does not recreate the Activity (configChanges).
+- Real device check in CI: `tools/device/check_lifecycle.sh` on an API 34 emulator; screenshots are printed base64 in the job log (artifacts can't be downloaded from the cloud session).
+
 ## Licensing
 Only CC0 / public domain / licenses explicitly allowing commercial redistribution, verified on
 the specific file's repository. No GPL/LGPL/AGPL code (JUCE, Surge excluded). Update
