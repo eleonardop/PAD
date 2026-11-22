@@ -18,6 +18,9 @@ bad() { log "FALHA  $*"; FAILS=$((FAILS + 1)); }
 
 adb root >/dev/null 2>&1; sleep 2
 adb wait-for-device
+until [ "$(adb shell getprop sys.boot_completed | tr -d '\r')" = "1" ]; do sleep 2; done
+sleep 25   # o emulador termina de iniciar o launcher (evita o diálogo "não está respondendo")
+adb shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS >/dev/null 2>&1
 adb install -r -g "$APK" >/dev/null || { log "não instalou"; exit 1; }
 adb shell settings put system accelerometer_rotation 0
 adb shell cmd window user-rotation lock 0
@@ -29,13 +32,19 @@ lc() { adb logcat -d -s PadEngine:I | tr -d '\r'; }
 count() { lc | grep -c "$1"; }
 threads() { local p; p=$(pid); [ -n "$p" ] && adb shell "cat /proc/$p/task/*/comm" 2>/dev/null | tr -d '\r' | sort | uniq -c | tr '\n' ';'; }
 cpu() { local p; p=$(pid); [ -n "$p" ] && adb shell top -b -n 2 -d 2 -p "$p" | tr -d '\r' | awk -v p="$p" '$1==p {c=$9} END {print c+0}'; }
+# Diálogos do próprio emulador recém-ligado ("Pixel Launcher isn't responding"): tocar "Wait".
+dismiss_system() {
+  local w
+  if [ -f "$OUT/ui.xml" ] && w=$(python3 "$HERE/find_view.py" "$OUT/ui.xml" "Wait"); then adb shell input tap $w; sleep 2; fi
+}
 tap() {
   local xy="" try
-  for try in 1 2 3 4; do
+  for try in 1 2 3 4 5; do
     rm -f "$OUT/ui.xml"
     adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1
     adb pull /sdcard/ui.xml "$OUT/ui.xml" >/dev/null 2>&1
     [ -f "$OUT/ui.xml" ] && xy=$(python3 "$HERE/find_view.py" "$OUT/ui.xml" "$1") && break
+    dismiss_system
     xy=""; sleep 2
   done
   [ -n "$xy" ] || { bad "elemento \"$1\" não encontrado na tela"; return 1; }

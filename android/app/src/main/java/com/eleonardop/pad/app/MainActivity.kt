@@ -301,7 +301,9 @@ class MainActivity : Activity() {
         if (wide) {
             val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
             row.addView(scroll, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1.25f))
-            row.addView(perform, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f))
+            // (rolável: em celular deitado a altura é pequena)
+            val side = ScrollView(this).apply { isFillViewport = true; isVerticalScrollBarEnabled = false; setBackgroundColor(cSurface); addView(perform) }
+            row.addView(side, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f))
             root.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         } else {
             root.addView(scroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
@@ -615,8 +617,10 @@ class MainActivity : Activity() {
         panel.addView(HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false; addView(chips) })
 
         // 12 tonalidades: 6 × 2 em pé (dedos grandes), 4 × 3 na lateral
-        val cols = if (wide) 4 else 6
-        val keyH = when { wide && resources.configuration.screenHeightDp >= 700 -> 76; wide -> 60; else -> 56 }
+        // celular deitado (pouca altura): 6 × 2 e teclas mais baixas; tablet: 4 × 3 grandes
+        val short = wide && resources.configuration.screenHeightDp < 520
+        val cols = if (wide && !short) 4 else 6
+        val keyH = when { short -> 48; wide && resources.configuration.screenHeightDp >= 700 -> 76; wide -> 60; else -> 56 }
         val grid = GridLayout(this).apply { columnCount = cols; setPadding(0, dp(10), 0, dp(6)) }
         for (k in 0 until 12) {
             val b = text(PadEngine.noteNames[k], 19f, cText, medium).apply {
@@ -649,8 +653,9 @@ class MainActivity : Activity() {
             }
         }
         pressFeedback(swell); pressFeedback(stop)
-        actions.addView(swell, LinearLayout.LayoutParams(0, dp(54), 1f).apply { rightMargin = dp(6) })
-        actions.addView(stop, LinearLayout.LayoutParams(0, dp(54), 1f).apply { leftMargin = dp(6) })
+        val actH = if (short) 46 else 54
+        actions.addView(swell, LinearLayout.LayoutParams(0, dp(actH), 1f).apply { rightMargin = dp(6) })
+        actions.addView(stop, LinearLayout.LayoutParams(0, dp(actH), 1f).apply { leftMargin = dp(6) })
         panel.addView(actions)
         paintChords()
         highlightKeys()
