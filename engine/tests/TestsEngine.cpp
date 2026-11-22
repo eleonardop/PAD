@@ -436,6 +436,8 @@ TEST(motor_presets_equilibrio) {
     double lo = 1e9, hi = -1e9;
     for (int p = 0; p < presetCount(); ++p) {
         resetEngine(e, p);
+        e.setSeed(3); // microeventos (ex.: Guitar Pad) com a mesma sequência em toda execução
+        e.waitForSources(60.0); // e com as fontes já prontas (sob ASan o carregamento é lento)
         e.playChord(7, ChordType::Major);
         auto x = render(e, 14.0);
         const double rms = rmsDb(x, fr(8.0), fr(14.0));
