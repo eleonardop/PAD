@@ -30,9 +30,15 @@ count() { lc | grep -c "$1"; }
 threads() { local p; p=$(pid); [ -n "$p" ] && adb shell "cat /proc/$p/task/*/comm" 2>/dev/null | tr -d '\r' | sort | uniq -c | tr '\n' ';'; }
 cpu() { local p; p=$(pid); [ -n "$p" ] && adb shell top -b -n 2 -d 2 -p "$p" | tr -d '\r' | awk -v p="$p" '$1==p {c=$9} END {print c+0}'; }
 tap() {
-  adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1
-  adb pull /sdcard/ui.xml "$OUT/ui.xml" >/dev/null 2>&1
-  local xy; xy=$(python3 "$HERE/find_view.py" "$OUT/ui.xml" "$1") || { bad "elemento \"$1\" não encontrado na tela"; return 1; }
+  local xy="" try
+  for try in 1 2 3 4; do
+    rm -f "$OUT/ui.xml"
+    adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1
+    adb pull /sdcard/ui.xml "$OUT/ui.xml" >/dev/null 2>&1
+    [ -f "$OUT/ui.xml" ] && xy=$(python3 "$HERE/find_view.py" "$OUT/ui.xml" "$1") && break
+    xy=""; sleep 2
+  done
+  [ -n "$xy" ] || { bad "elemento \"$1\" não encontrado na tela"; return 1; }
   adb shell input tap $xy
 }
 shot() { adb exec-out screencap -p > "$OUT/shots/$1.png"; python3 "$HERE/shot_to_log.py" "$OUT/shots/$1.png" "$1"; }

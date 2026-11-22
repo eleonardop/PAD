@@ -214,7 +214,7 @@ const Preset kPresets[] = {
       0.8f, 11.0f, 1.0f, 0.92f, 0.08f, 4.0f, 6.0f, 3.5f, 0.8f,
       0.0f, 0.0f, 0.6f, 0.25f, 0.32f, 2.0f, 0.0f, 0.08f, 0.92f, 0.0f, 0.0f,
       0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.5f, 0.0f, 0.0f, 4.0f,
-      0.0f, 0.0f, 1.0f, 0.4f}, 7.3f, "SOFT PADS",
+      0.0f, 0.0f, 1.0f, 0.4f}, 6.6f, "SOFT PADS",
      {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 18.0f, 0.0f, 1.0f}},
 };
 constexpr int kCount = static_cast<int>(sizeof(kPresets) / sizeof(kPresets[0]));
