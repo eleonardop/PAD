@@ -27,16 +27,18 @@ uint16_t pcMaskOf(const Voicing& v) {
     for (int i = 0; i < v.count; ++i) m = static_cast<uint16_t>(m | (1u << (v.notes[i] % 12)));
     return m;
 }
-// Energia (dB) acima de fLo, relativa ao total, de um trecho mono.
+// Energia (dB) acima de fLo, relativa ao total, somada em todas as janelas de 'start' até o fim.
 double bandShareDb(const Stereo& x, size_t start, double fLo) {
-    const size_t n = 1 << 15;
+    const size_t n = 1 << 14;
     auto m = mono(x);
-    auto s = magnitudeSpectrumDb(m, start, n);
     double hi = 0, tot = 0;
-    for (size_t k = 1; k < s.size(); ++k) {
-        const double p = std::pow(10.0, s[k] / 10), f = k * kSr / n;
-        tot += p;
-        if (f >= fLo) hi += p;
+    for (size_t w = start; w + n <= m.size(); w += n / 2) {
+        auto s = magnitudeSpectrumDb(m, w, n);
+        for (size_t k = 1; k < s.size(); ++k) {
+            const double p = std::pow(10.0, s[k] / 10), f = k * kSr / n;
+            tot += p;
+            if (f >= fLo) hi += p;
+        }
     }
     return 10 * std::log10(hi / tot);
 }
@@ -80,7 +82,7 @@ TEST(abafar_desligado_neutro_e_fecha) {
         e.waitForSources(60.0);
         render(e, 0.3);
         int idx = 0;
-        return render(e, 8.0, 192, [&](double t) { if (idx == 0 && t >= 0.0) { e.playChord(7, ChordType::Pad5); ++idx; } });
+        return render(e, 12.0, 192, [&](double t) { if (idx == 0 && t >= 0.0) { e.playChord(7, ChordType::Pad5); ++idx; } });
     };
     const Stereo off = take(0.0f), off2 = take(0.0f), on = take(0.75f);
     // (o motor tem moduladores livres, então duas execuções não são idênticas amostra a amostra;
@@ -185,6 +187,7 @@ TEST(presets_v05_pads_de_fundo) {
             const bool warm = std::strcmp(preset(i).name, "Warm") == 0 && presetIsCurrent(i);
             if (pass == 0 ? !warm : !isSoftPad(i)) continue;
             resetEngine(e, i);
+            if (std::strcmp(preset(i).name, "Guitar Pad") != 0) e.setParam(ParamId::Activity, 0.0f); // só o timbre do pad
             e.setSeed(21);
             e.waitForSources(60.0);
             render(e, 0.3);
