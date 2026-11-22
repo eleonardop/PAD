@@ -1,3 +1,6 @@
+#if defined(__linux__) || defined(__ANDROID__)
+#include <pthread.h>
+#endif
 #include "Sources.h"
 #include "SampleBank.h"
 #include "../dsp/PadSynth.h"
@@ -268,7 +271,12 @@ void SourceLibrary::start() {
     if (running_) return;
     quit_ = false;
     running_ = true;
-    thread_ = std::thread([this] { loaderLoop(); });
+    thread_ = std::thread([this] {
+#if defined(__linux__) || defined(__ANDROID__)
+        pthread_setname_np(pthread_self(), "pad-sources"); // aparece no diagnóstico do encerramento
+#endif
+        loaderLoop();
+    });
 }
 
 void SourceLibrary::stop() {

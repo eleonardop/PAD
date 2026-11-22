@@ -2,9 +2,14 @@
 
 Aplicativo Android de pads ambientais para cultos, ministrações e música ao vivo.
 
-**Versão atual: 0.5 — pads de fundo.**
+**Versão atual: 0.6 — pads aveludados, encerramento correto e interface final.**
 
-### Novidades da v0.5
+### Novidades da v0.6
+* **SOFT PADS refeitos** com o novo parâmetro **Aveludado**: nota que floresce em vez de nascer brilhante, agudos mais macios e mais no centro, reverb integrado ao corpo.
+* **O app fecha de verdade**: botão **Sair**, **Encerrar** na notificação, voltar sem som ou tirar dos recentes liberam áudio, motor e memória; sem som em segundo plano, a saída de áudio fecha sozinha.
+* **Nova interface**: tonalidades, acorde, SWELL e PARAR sempre visíveis; sons em cartões por categoria; leiaute para celular em pé, deitado e tablet.
+
+### v0.5
 * **Nova categoria SOFT PADS** (no topo da tela), desenhada a partir de 9 referências de pads de fundo: **Soft Pad**, **Shimmer Pad**, **Deep Pad**, **Wide Pad** e **Guitar Pad**.
 * **Quinta por baixo**: montagem de acorde com a 5ª abaixo da fundamental, como nos pads de fundo.
 * **Abafar** na tela principal: fecha o som inteiro (inclusive o reverb), do aberto ao "abafado".

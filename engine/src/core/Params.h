@@ -60,6 +60,8 @@ enum class ParamId : int32_t {
     ToneCut,           // 0..1  abafar: passa-baixa de 4 polos no conjunto (0 = desligado, 1 = ~420 Hz)
     VoicingStyle,      // 0 = voicing padrão, 1 = quinta por baixo (pads de fundo: 5ª abaixo da fundamental)
     LayerGuitar,       // 0..1  swells de guitarra (microeventos do tipo guitarra)
+    // ---- v0.6
+    Velvet,            // 0..1  aveludado: filtro acompanha o envelope, sem ressonância/saturação, agudos e lados mais contidos, reverb mais escuro
     Count
 };
 
@@ -119,6 +121,7 @@ inline const ParamInfo& paramInfo(ParamId id) {
         {"tone_cut", 0.0f, 1.0f, 0.0f, 0.15f},
         {"voicing_style", 0.0f, 1.0f, 0.0f, 0.0f},
         {"layer_guitar", 0.0f, 1.0f, 0.0f, 0.05f},
+        {"velvet", 0.0f, 1.0f, 0.0f, 0.10f},
     };
     return kInfo[static_cast<int>(id)];
 }

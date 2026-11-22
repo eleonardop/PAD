@@ -35,6 +35,7 @@ struct RenderContext {
     float microBow = 0, microTapeGust = 0, microPerMinute = 0, microHighBias = 0;
     // v0.5
     float microGuitar = 0, layerGuitar = 0;
+    float velvet = 0;       // v0.6
     int stringsSource = 0;  // 0 = reais, 1 = sintéticas
     int textureType = 0;    // 0 = piano "Cathedral", 1 = órgão
 };

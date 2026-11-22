@@ -170,3 +170,44 @@ jobs:
         with:
           name: PAD-Worship-APK
           path: android/app/build/outputs/apk/debug/*.apk
+
+  android-dispositivo:
+    name: App Android no emulador — ciclo de vida, encerramento e telas
+    needs: android
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: PAD-Worship-APK
+          path: apk
+
+      - name: Habilitar KVM (emulador acelerado)
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Pillow (reduzir as capturas de tela)
+        run: python3 -m pip install --user pillow
+
+      - name: Verificação real no emulador (Android 14)
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          ram-size: 4096M
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -no-boot-anim -camera-back none
+          script: bash tools/device/check_lifecycle.sh "$(ls apk/*.apk | head -1)"
+
+      - name: Publicar resultados do dispositivo
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: PAD-dispositivo-ciclo-de-vida-e-telas
+          path: device_results/

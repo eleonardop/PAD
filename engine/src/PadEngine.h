@@ -163,7 +163,9 @@ private:
     float lastToneCut_ = -1.0f;
     bool toneCutOn_ = false;
     SvfStereo padHp_, lowLp_, lowHp_, lowShelf_, warmBell_, warmHighCut_, tilt_, sendHp_, sendLp_;
-    OnePole dcL_, dcR_, sideLp_;
+    OnePole dcL_, dcR_, sideLp_, sideHiL_;
+    bool sideHiOn_ = false;
+    float lastVelvet_ = -1.0f;
     EnsembleChorus ensemble_;
     ShimmerLoop shimmer_;
     std::array<ReverbSlot, static_cast<size_t>(ReverbType::Count)> reverbs_;
