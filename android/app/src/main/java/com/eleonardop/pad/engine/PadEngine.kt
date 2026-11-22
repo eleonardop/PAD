@@ -132,8 +132,8 @@ object PadEngine {
         handle
     }
 
-    // Um thread só para preparar/abrir/fechar; ele termina sozinho depois de 10 s parado.
-    private val worker = ThreadPoolExecutor(1, 1, 10, TimeUnit.SECONDS, LinkedBlockingQueue()) { r ->
+    // Um thread só para preparar/abrir/fechar; ele termina sozinho depois de 3 s parado.
+    private val worker = ThreadPoolExecutor(1, 1, 3, TimeUnit.SECONDS, LinkedBlockingQueue()) { r ->
         Thread(r, "pad-engine-ctl")
     }.apply { allowCoreThreadTimeOut(true) }
     private val main = Handler(Looper.getMainLooper())

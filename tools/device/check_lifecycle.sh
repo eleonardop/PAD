@@ -20,7 +20,7 @@ adb root >/dev/null 2>&1; sleep 2
 adb wait-for-device
 adb install -r -g "$APK" >/dev/null || { log "não instalou"; exit 1; }
 adb shell settings put system accelerometer_rotation 0
-adb shell settings put system user_rotation 0
+adb shell cmd window user-rotation lock 0
 
 pid() { adb shell pidof $PKG | tr -d '\r'; }
 services() { adb shell dumpsys activity services $PKG | grep -c "PadPlaybackService" ; }
@@ -74,11 +74,11 @@ adb shell am start -W -n $ACT >/dev/null; sleep 6
 [ "$(count 'Stream aberto')" -gt "$n0" ] && ok "saída de áudio reaberta ao voltar" || bad "saída não reabriu ao voltar"
 tap "Tom D"; sleep 4
 n1=$(count 'Stream aberto')
-adb shell settings put system user_rotation 1; sleep 4
+adb shell cmd window user-rotation lock 1; sleep 4
 shot "04_paisagem_tocando"
 [ "$(count 'Stream aberto')" -eq "$n1" ] && ok "girar a tela não reinicia o áudio" || bad "o áudio reiniciou ao girar"
 [ "$(services)" -ge 1 ] && ok "continua tocando depois de girar" || bad "parou ao girar"
-adb shell settings put system user_rotation 0; sleep 3
+adb shell cmd window user-rotation lock 0; sleep 3
 
 log "== 7. Sair (botão, tocando: confirmação)"
 mem=$(adb shell dumpsys meminfo $PKG | grep -E "TOTAL PSS|TOTAL:" | head -1 | tr -s ' ')
@@ -122,9 +122,9 @@ for cfg in "720x1280 320 compacto" "1080x2400 420 padrao" "1440x3088 560 s23ultr
   adb shell am force-stop $PKG; sleep 1
   adb shell am start -W -n $ACT >/dev/null; sleep 12
   shot "07_tela_$3"
-  adb shell settings put system user_rotation 1; sleep 4
+  adb shell cmd window user-rotation lock 1; sleep 4
   shot "08_tela_$3_paisagem"
-  adb shell settings put system user_rotation 0; sleep 2
+  adb shell cmd window user-rotation lock 0; sleep 2
 done
 adb shell wm size reset; adb shell wm density reset
 

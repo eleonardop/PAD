@@ -404,6 +404,8 @@ class MainActivity : Activity() {
         return d.split(';', ':').first().trim().replaceFirstChar { it.uppercase() }
     }
 
+    private fun fullDescription(i: Int) = PadEngine.presetDescription(i).substringAfter("— ").replaceFirstChar { it.uppercase() }
+
     private fun showCategory() {
         val lib = PadEngine.library
         if (lib.isEmpty()) return
@@ -614,7 +616,7 @@ class MainActivity : Activity() {
 
         // 12 tonalidades: 6 × 2 em pé (dedos grandes), 4 × 3 na lateral
         val cols = if (wide) 4 else 6
-        val keyH = if (wide) 64 else 56
+        val keyH = when { wide && resources.configuration.screenHeightDp >= 700 -> 76; wide -> 60; else -> 56 }
         val grid = GridLayout(this).apply { columnCount = cols; setPadding(0, dp(10), 0, dp(6)) }
         for (k in 0 until 12) {
             val b = text(PadEngine.noteNames[k], 19f, cText, medium).apply {
@@ -680,7 +682,7 @@ class MainActivity : Activity() {
         PadEngine.library.indexOfFirst { index in it.second }.takeIf { it >= 0 }?.let {
             if (it != currentCategory) { currentCategory = it; showCategory() }
         }
-        description.text = PadEngine.presetDescription(index).substringAfter("— ")
+        description.text = fullDescription(index)
         paintCards()
         presetCards[index]?.let { it.animate().scaleX(1.03f).scaleY(1.03f).setDuration(90).withEndAction { it.animate().scaleX(1f).scaleY(1f).setDuration(140).start() }.start() }
         ui.postDelayed({ refreshControls() }, 50)
@@ -705,7 +707,7 @@ class MainActivity : Activity() {
     /** Reaplica na tela o estado atual (depois de girar ou de reabrir o áudio). */
     private fun syncAll() {
         // (o motor guarda o preset e os ajustes; aqui só a tela é atualizada)
-        if (currentPreset >= 0) description.text = PadEngine.presetDescription(currentPreset).substringAfter("— ")
+        if (currentPreset >= 0) description.text = fullDescription(currentPreset)
         paintCards(); paintChords(); highlightKeys(); refreshControls()
     }
 
