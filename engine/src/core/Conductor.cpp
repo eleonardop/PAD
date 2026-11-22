@@ -626,7 +626,7 @@ void Conductor::microEvent(const RenderContext& ctx, const SourceLibrary& lib, T
         case MicroType::Guitar: {
             // Swell de guitarra (pedal de volume) com dois ecos que trocam de lado. O tempo do
             // eco é sorteado a cada swell (0,38–0,62 s): eco de ambiente, não grade rítmica.
-            note = chooseGuitarNote(57 + shift, 86 + shift);
+            note = chooseGuitarNote(62 + shift, 91 + shift);
             if (note < 0) break;
             e.source = SourceId::GuitarClean; e.midi = note;
             e.level = 1.1f * ctx.layerGuitar * vel; // no Guitar Pad a guitarra é o som principal

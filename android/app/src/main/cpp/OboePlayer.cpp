@@ -76,12 +76,13 @@ int OboePlayer::xRuns() {
 }
 
 void OboePlayer::stop() {
+    running_ = false; // antes da trava: uma reabertura em andamento desiste na próxima tentativa
     std::lock_guard<std::mutex> g(lock_);
-    running_ = false;
     if (stream_) {
         stream_->requestStop();
-        stream_->close();
+        stream_->close(); // espera o callback terminar; depois disso o motor não é mais chamado
         stream_.reset();
+        LOGI("Saída de áudio fechada.");
     }
 }
 
@@ -94,17 +95,21 @@ oboe::DataCallbackResult OboePlayer::onAudioReady(oboe::AudioStream*, void* audi
 void OboePlayer::onErrorAfterClose(oboe::AudioStream*, oboe::Result error) {
     // Ex.: fone conectado/desconectado, troca de saída Bluetooth. O Oboe já fechou o stream;
     // reabrimos na nova saída. O motor continua com o mesmo estado (o acorde segue tocando).
+    // Tudo sob a trava e conferindo running_ a cada tentativa: se stop() for chamado (Sair,
+    // segundo plano) durante a reabertura, não sobra um stream aberto nem uma espera longa.
     LOGI("Stream encerrado pelo sistema (%s); reabrindo.", oboe::convertToText(error));
-    if (!running_) return;
-    std::lock_guard<std::mutex> g(lock_);
-    stream_.reset();
     for (int attempt = 0; attempt < 5; ++attempt) {
-        if (openStream()) {
-            if (stream_->requestStart() == oboe::Result::OK) return;
-            stream_->close();
+        {
+            std::lock_guard<std::mutex> g(lock_);
+            if (!running_) { stream_.reset(); return; }
             stream_.reset();
+            if (openStream()) {
+                if (stream_->requestStart() == oboe::Result::OK) return;
+                stream_->close();
+                stream_.reset();
+            }
         }
-        std::this_thread::sleep_for(std::chrono::milliseconds(200)); // nova saída ainda inicializando
+        std::this_thread::sleep_for(std::chrono::milliseconds(200)); // nova saída ainda inicializando (sem a trava)
     }
     LOGE("Não foi possível reabrir o stream de áudio.");
     running_ = false;

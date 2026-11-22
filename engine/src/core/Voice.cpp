@@ -302,10 +302,18 @@ void Voice::render(const RenderContext& ctx, Buses& out, int n) {
     float cutoff = (f0_ * (3.0f + 10.0f * b * b) + 600.0f + 5200.0f * b) *
                    std::exp2(1.2f * evo * (0.7f * ctx.evoCut + 0.3f * evoCut_.tick()) + 0.35f * mov * modCut_.tick() +
                              1.4f * (inten - 0.5f)); // Intensidade abre o filtro (±0,7 oitava), como tocar mais forte
+    // v0.6 Aveludado: o filtro abre junto com o volume da nota (começa escuro e "floresce", como
+    // um pad tocado devagar), em vez de a nota já nascer com todo o brilho.
+    const float vel = ctx.velvet;
+    if (vel > 0.0f) {
+        const float lv = clampf(env_.level() * fadePos_, 0.0f, 1.0f);
+        cutoff *= 1.0f - vel + vel * (0.2f + 0.8f * lv);
+    }
     cutoff = clampf(cutoff, 120.0f, 15000.0f);
-    const float drive = 0.4f + 1.0f * ctx.warmth;
+    // Sem ressonância nem saturação do ladder no aveludado (o pico no corte soa nasal/áspero).
+    const float drive = (0.4f + 1.0f * ctx.warmth) * (1.0f - vel) + 0.25f * vel;
     if (std::fabs(cutoff - lastCutoff_) > lastCutoff_ * 0.003f || std::fabs(drive - lastDrive_) > 1e-3f) {
-        const float kRes = 0.2f + 0.5f * ctx.warmth;
+        const float kRes = (0.2f + 0.5f * ctx.warmth) * (1.0f - 0.85f * vel);
         ladL_.setCoefficients(cutoff, kRes, sr_); ladR_.setCoefficients(cutoff, kRes, sr_);
         ladL_.setDrive(drive); ladR_.setDrive(drive);
         lastCutoff_ = cutoff;

@@ -3,6 +3,7 @@
 #include "AudioAnalysis.h"
 #include <cmath>
 #include <cstring>
+#include <memory>
 #define private public // acesso ao gerador da guitarra (função estática do carregador)
 #include "core/Sources.h"
 #undef private
@@ -157,7 +158,7 @@ TEST(guitarra_notas_seguras) {
                     const NoteLogEntry& n = c.logAt(i);
                     if (n.instrument != 10 + static_cast<int>(MicroType::Guitar)) continue;
                     ++notes;
-                    if (n.midi < 57 || n.midi > 86) ++bad;
+                    if (n.midi < 62 || n.midi > 91) ++bad;
                     const int pc = n.midi % 12, iv = ((pc - root) % 12 + 12) % 12;
                     if ((mask >> pc) & 1) continue;
                     ++colors;
@@ -230,4 +231,85 @@ TEST(presets_v05_pads_de_fundo) {
     CHECK(std::fabs(0.5 * (hi + lo) - warmLevel) < 3.0);
     CHECK(shimmerHigh < warmHigh - 3.0);
     CHECK(deepHigh < warmHigh - 10.0);
+}
+
+// v0.6 Aveludado: no mesmo preset, a entrada da nota é mais escura (o filtro abre com o volume),
+// os agudos ficam mais no centro (menos lado acima de 3 kHz) e nada aloca no áudio.
+TEST(aveludado_entrada_escura_e_agudos_centrados) {
+    PadEngine& e = sharedEngine();
+    auto take = [&](float v) {
+        resetEngine(e, presetByName("Soft Pad"));
+        e.setParam(ParamId::Velvet, v);
+        e.setParam(ParamId::Activity, 0.0f);
+        e.setSeed(8);
+        e.waitForSources(60.0);
+        render(e, 0.3);
+        int idx = 0;
+        g_allocationCount = 0;
+        return render(e, 14.0, 192, [&](double t) { if (idx == 0 && t >= 0.0) { e.playChord(7, ChordType::Pad5); ++idx; } }, true);
+    };
+    const Stereo hard = take(0.0f);
+    const long allocA = g_allocationCount.load();
+    const Stereo soft = take(1.0f);
+    const long allocB = g_allocationCount.load();
+    auto sideHigh = [&](const Stereo& x) {
+        // energia do lado relativa ao meio acima de 3 kHz, de 6 s ao fim
+        Stereo hp(x.size());
+        double sh = 0, mh = 0;
+        const size_t n = 1 << 14;
+        std::vector<float> s(n), m(n);
+        for (size_t w = fr(6.0); w + n <= x.size() / 2; w += n) {
+            for (size_t k = 0; k < n; ++k) { const float l = x[2 * (w + k)], r = x[2 * (w + k) + 1]; m[k] = 0.5f * (l + r); s[k] = 0.5f * (l - r); }
+            auto ss = magnitudeSpectrumDb(s, 0, n), sm = magnitudeSpectrumDb(m, 0, n);
+            for (size_t k = 1; k < ss.size(); ++k) if (k * kSr / n >= 3000.0) { sh += std::pow(10.0, ss[k] / 10); mh += std::pow(10.0, sm[k] / 10); }
+        }
+        return 10 * std::log10(sh / mh);
+    };
+    // agudo na entrada da nota: energia acima de 1,5 kHz entre 0,3 e 1,7 s (relativa ao total)
+    auto onsetHigh = [&](const Stereo& x) { Stereo seg(x.begin() + 2 * fr(0.3), x.begin() + 2 * fr(1.7)); return bandShareDb(seg, 0, 1500.0); };
+    const double cHard = onsetHigh(hard), cSoft = onsetHigh(soft);
+    const double sHard = sideHigh(hard), sSoft = sideHigh(soft);
+    report("agudo (>1,5 kHz) na entrada da nota: %.1f -> %.1f dB; lado/meio acima de 3 kHz: %.1f -> %.1f dB; alocações %ld / %ld",
+           cHard, cSoft, sHard, sSoft, allocA, allocB);
+    CHECK(cSoft < cHard - 3.0);
+    CHECK(sSoft < sHard - 3.0);
+    CHECK(allocA == 0 && allocB == 0);
+    CHECK(allFinite(soft));
+}
+
+// Encerramento (v0.6): criar, tocar e destruir o motor várias vezes não deixa threads vivos
+// (o carregador de fontes termina) e não trava. Vazamento de memória é verificado pelo
+// LeakSanitizer na execução com ASan.
+#include <dirent.h>
+namespace {
+int threadCount() {
+    int n = 0;
+    if (DIR* d = opendir("/proc/self/task")) {
+        while (dirent* e = readdir(d)) if (e->d_name[0] != '.') ++n;
+        closedir(d);
+    }
+    return n;
+}
+} // namespace
+
+TEST(motor_criar_e_destruir_sem_sobras) {
+    const int before = threadCount();
+    int worst = 0;
+    for (int round = 0; round < 3; ++round) {
+        auto e = std::make_unique<PadEngine>();
+        e->setAssetProvider(std::make_shared<FileAssetProvider>(PAD_ASSETS_DIR));
+        CHECK(e->prepare(kSr));
+        e->applyPreset(presetByName(round == 1 ? "Guitar Pad" : "Soft Pad"));
+        e->waitForSources(60.0);
+        std::vector<float> b(2 * 192);
+        e->playChord(7, ChordType::Pad5);
+        for (int i = 0; i < 250; ++i) e->process(b.data(), 192);
+        e->applyPreset(presetByName("Shimmer Pad")); // troca com fontes ainda carregando
+        for (int i = 0; i < 50; ++i) e->process(b.data(), 192);
+        worst = std::max(worst, threadCount());
+        e.reset();
+    }
+    const int after = threadCount();
+    report("threads: antes %d, no pior momento %d, depois de destruir 3 motores %d", before, worst, after);
+    CHECK(after <= before);
 }

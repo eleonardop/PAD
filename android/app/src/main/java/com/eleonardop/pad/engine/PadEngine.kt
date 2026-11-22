@@ -3,7 +3,12 @@ package com.eleonardop.pad.engine
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
-import java.util.concurrent.Executors
+import java.util.concurrent.LinkedBlockingQueue
+import java.util.concurrent.ThreadPoolExecutor
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.locks.ReentrantReadWriteLock
+import kotlin.concurrent.read
+import kotlin.concurrent.write
 
 /** Parâmetros do motor. A ordem é a mesma de `ParamId` em engine/src/core/Params.h. */
 enum class PadParam(val label: String, val choices: List<String>? = null) {
@@ -53,7 +58,9 @@ enum class PadParam(val label: String, val choices: List<String>? = null) {
     // v0.5
     TONE_CUT("Abafar (fecha o som inteiro)"),
     VOICING_STYLE("Montagem do acorde", listOf("Padrão", "Quinta por baixo (pads de fundo)")),
-    LAYER_GUITAR("Guitarra (swells)");
+    LAYER_GUITAR("Guitarra (swells)"),
+    // v0.6
+    VELVET("Aveludado");
 
     val id: Int get() = ordinal
     val range: FloatArray by lazy { NativeBridge.nativeParamRange(ordinal) } // [min, max, padrão]
@@ -92,6 +99,16 @@ data class EngineStats(
  *
  * Todas as chamadas de controle são seguras em qualquer thread e não bloqueiam o áudio:
  * no lado nativo viram comandos numa fila sem trava ou parâmetros atômicos.
+ *
+ * Ciclo de vida (v0.6):
+ *  - o motor nativo é criado sob demanda e pode ser destruído por [release] (Sair, deslizar o
+ *    app para fora dos recentes, "Encerrar" na notificação): fecha a saída de áudio, para o
+ *    thread carregador e libera samples e buffers;
+ *  - [suspendAudio] fecha só a saída de áudio (app em segundo plano e sem tocar): o callback
+ *    deixa de rodar (zero CPU), os sons continuam carregados para voltar na hora;
+ *  - o handle nativo é protegido por uma trava de leitura/escrita: as chamadas de controle usam
+ *    a leitura (rápida, várias ao mesmo tempo) e a destruição usa a escrita, então nenhuma
+ *    chamada usa um motor já liberado.
  */
 object PadEngine {
     @Volatile private var appContext: Context? = null
@@ -101,40 +118,94 @@ object PadEngine {
         if (appContext == null) appContext = context.applicationContext
     }
 
-    private val handle: Long by lazy { NativeBridge.nativeCreate(appContext?.assets) }
-    private val worker = Executors.newSingleThreadExecutor { r -> Thread(r, "pad-engine-init") }
+    private val lock = ReentrantReadWriteLock()
+    private var handle: Long = 0L
+
+    /** Executa [f] com o handle vivo (0 se o motor foi liberado). */
+    private inline fun <T> withHandle(f: (Long) -> T): T = lock.read { f(handle) }
+
+    private fun ensureHandle(): Long = lock.write {
+        if (handle == 0L) {
+            handle = NativeBridge.nativeCreate(appContext?.assets)
+            if (lastVolume >= 0f) NativeBridge.nativeSetParam(handle, PadParam.MASTER_VOLUME.id, lastVolume)
+        }
+        handle
+    }
+
+    // Um thread só para preparar/abrir/fechar; ele termina sozinho depois de 10 s parado.
+    private val worker = ThreadPoolExecutor(1, 1, 10, TimeUnit.SECONDS, LinkedBlockingQueue()) { r ->
+        Thread(r, "pad-engine-ctl")
+    }.apply { allowCoreThreadTimeOut(true) }
     private val main = Handler(Looper.getMainLooper())
+    @Volatile private var lastVolume = -1f
 
     @Volatile var isStarted = false
         private set
+
+    /** Quem quer saber quando o app está sendo encerrado (a tela fecha a si mesma). */
+    private val exitListeners = mutableListOf<() -> Unit>()
+    fun addExitListener(l: () -> Unit) { synchronized(exitListeners) { exitListeners += l } }
+    fun removeExitListener(l: () -> Unit) { synchronized(exitListeners) { exitListeners -= l } }
 
     val noteNames = listOf("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
 
     /** Abre a saída de áudio e prepara o motor (~1–2 s na primeira vez), fora da thread de UI. */
     fun start(onReady: (Boolean) -> Unit) {
         worker.execute {
-            val ok = isStarted || NativeBridge.nativeStart(handle)
+            val h = ensureHandle()
+            val ok = isStarted || withHandle { if (it == h && it != 0L) NativeBridge.nativeStart(it) else false }
             isStarted = ok
             main.post { onReady(ok) }
         }
     }
 
-    /** Fecha a saída de áudio (o estado do motor é mantido). */
-    fun shutdownAudio() {
+    /** Fecha só a saída de áudio (o estado do motor e os sons carregados são mantidos). */
+    fun suspendAudio() {
         worker.execute {
-            NativeBridge.nativeShutdownAudio(handle)
+            withHandle { if (it != 0L) NativeBridge.nativeShutdownAudio(it) }
             isStarted = false
         }
     }
 
-    fun playChord(rootPitchClass: Int, type: ChordType): Boolean = NativeBridge.nativePlayChord(handle, rootPitchClass, type.ordinal)
-    fun setKey(rootPitchClass: Int): Boolean = NativeBridge.nativeSetKey(handle, rootPitchClass)
-    fun stop(): Boolean = NativeBridge.nativeStopNotes(handle)
-    /** Pre-swell manual: cresce durante "Tempo do Swell" e atinge o pico no fim (troque o acorde ali). */
-    fun swell(): Boolean = NativeBridge.nativeSwell(handle)
+    /** Compatibilidade com a v0.5. */
+    fun shutdownAudio() = suspendAudio()
 
-    fun setParam(param: PadParam, value: Float) = NativeBridge.nativeSetParam(handle, param.id, value)
-    fun getParam(param: PadParam): Float = NativeBridge.nativeGetParam(handle, param.id)
+    /**
+     * Encerra tudo: abaixa o volume (sem estalo), fecha a saída de áudio e destrói o motor
+     * nativo (thread carregador, samples, buffers). Avisa quem pediu ([addExitListener]).
+     * Pode ser chamado de qualquer thread; é idempotente.
+     */
+    fun release(onDone: (() -> Unit)? = null) {
+        val listeners = synchronized(exitListeners) { exitListeners.toList() }
+        main.post { listeners.forEach { it() } }
+        worker.execute {
+            val h = withHandle { it }
+            if (h != 0L) {
+                val v = NativeBridge.nativeGetParam(h, PadParam.MASTER_VOLUME.id)
+                if (v > 0f) lastVolume = v
+                NativeBridge.nativeSetParam(h, PadParam.MASTER_VOLUME.id, 0f)
+                if (isStarted) Thread.sleep(180) // o volume desce suavizado (~50 ms) antes de fechar
+                lock.write {
+                    NativeBridge.nativeDestroy(handle)
+                    handle = 0L
+                }
+            }
+            isStarted = false
+            onDone?.let { main.post(it) }
+        }
+    }
+
+    /** O motor existe e está tocando notas (ou soltando o fim delas)? */
+    fun isPlaying(): Boolean = withHandle { it != 0L && NativeBridge.nativeStats(it).let { s -> s.size > 4 && s[4] > 0.5f } }
+
+    fun playChord(rootPitchClass: Int, type: ChordType): Boolean = withHandle { NativeBridge.nativePlayChord(it, rootPitchClass, type.ordinal) }
+    fun setKey(rootPitchClass: Int): Boolean = withHandle { NativeBridge.nativeSetKey(it, rootPitchClass) }
+    fun stop(): Boolean = withHandle { NativeBridge.nativeStopNotes(it) }
+    /** Pre-swell manual: cresce durante "Tempo do Swell" e atinge o pico no fim (troque o acorde ali). */
+    fun swell(): Boolean = withHandle { NativeBridge.nativeSwell(it) }
+
+    fun setParam(param: PadParam, value: Float) = withHandle { NativeBridge.nativeSetParam(it, param.id, value) }
+    fun getParam(param: PadParam): Float = withHandle { NativeBridge.nativeGetParam(it, param.id) }
 
     val presetNames: List<String> by lazy { (0 until NativeBridge.nativePresetCount()).map { NativeBridge.nativePresetName(it) } }
 
@@ -152,12 +223,12 @@ object PadEngine {
     val legacyPresets: List<Int> by lazy { presetCategories.indices.filter { presetCategories[it].isEmpty() } }
 
     fun presetDescription(index: Int): String = NativeBridge.nativePresetDescription(index)
-    fun applyPreset(index: Int) = NativeBridge.nativeApplyPreset(handle, index)
+    fun applyPreset(index: Int) = withHandle { NativeBridge.nativeApplyPreset(it, index) }
 
     /** Espera as fontes pedidas pelo preset/parâmetros atuais (fora da thread de UI). */
     fun waitForSources(seconds: Double = 20.0, onDone: (Boolean) -> Unit) {
         worker.execute {
-            val ok = NativeBridge.nativeWaitForSources(handle, seconds)
+            val ok = withHandle { NativeBridge.nativeWaitForSources(it, seconds) }
             main.post { onDone(ok) }
         }
     }
@@ -168,13 +239,14 @@ object PadEngine {
      */
     fun runBenchmark(quick: Boolean, onDone: (String) -> Unit) {
         worker.execute {
-            val r = NativeBridge.nativeBenchmark(handle, quick)
+            val r = withHandle { NativeBridge.nativeBenchmark(it, quick) }
             main.post { onDone(r) }
         }
     }
 
     fun stats(): EngineStats {
-        val s = NativeBridge.nativeStats(handle)
+        val s = withHandle { NativeBridge.nativeStats(it) }
+        if (s.size < 19) return EngineStats(0, 0f, 0f, 1f, false, 0, 0, 0, 0f, 0f, 0, 0, -1, 0, 0, 0, 0, 0, 0)
         return EngineStats(
             s[0].toInt(), s[1], s[2], s[3], s[4] > 0.5f, s[5].toInt(), s[6].toInt(), s[7].toInt(),
             s[8], s[9], s[10].toInt(), s[11].toInt(), s[12].toInt(), s[13].toInt(),

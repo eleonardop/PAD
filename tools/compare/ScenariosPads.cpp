@@ -1,6 +1,6 @@
-// Cenários da v0.5 (pads de fundo): cada preset SOFT PADS sustentado nas tonalidades das
-// referências enviadas pelo usuário (C, G, B, D, F, E, Em7), o preset v0.4 mais parecido no
-// mesmo acorde, e uma progressão. Blocos de 192 amostras, 48 kHz.
+// Cenários dos pads de fundo (SOFT PADS, v0.6): cada preset sustentado nas tonalidades das
+// referências enviadas pelo usuário (C, G, B, D, F, E, Em7) e uma progressão. Só as versões
+// atuais (o usuário pediu para não receber de novo as versões já descartadas). Blocos de 192 amostras, 48 kHz.
 // Uso: pad_scenarios_pads <saida> <assets> [filtro]
 #include <cstdio>
 #include <cstring>
@@ -92,8 +92,8 @@ int main(int argc, char** argv) {
     };
     for (const Ref& r : refs) {
         const std::vector<Step> s = {{r.root, r.t, 30}};
-        play(e, idx(r.v05), 1, std::string(r.tag) + "_v05_" + slug(r.v05), s, 6);
-        play(e, idx(r.v04), 1, std::string(r.tag) + "_v04_" + slug(r.v04), s, 6);
+        play(e, idx(r.v05), 1, std::string(r.tag) + "_" + slug(r.v05), s, 6);
+        (void)r.v04; // (v0.6: só as versões novas no pacote de escuta)
     }
     // Progressão de louvor em G com os 5 pads (pads de fundo costumam acompanhar acordes de 4–8 s).
     const std::vector<Step> prog = {{7, ChordType::Pad5, 8}, {2, ChordType::Pad5, 8}, {4, ChordType::Minor, 8}, {0, ChordType::Major, 8},

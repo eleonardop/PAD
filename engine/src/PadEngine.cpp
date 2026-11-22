@@ -77,6 +77,7 @@ bool PadEngine::prepare(float sampleRate, double waitSeconds) {
     lastToneCut_ = -1.0f;
     dcL_.setLowpass(8.0f, sr_); dcR_.setLowpass(8.0f, sr_); dcL_.reset(); dcR_.reset();
     sideLp_.setLowpass(140.0f, sr_); sideLp_.reset();
+    sideHiL_.setLowpass(20000.0f, sr_); sideHiL_.reset(); sideHiOn_ = false; lastVelvet_ = -1.0f;
     for (float& t : lastTone_) t = -1.0f;
 
     ensemble_.prepare(sr_);
@@ -318,6 +319,7 @@ void PadEngine::updateControl() {
     ctx_.bloomChance = P(ParamId::BloomChance);
     ctx_.swellTime = P(ParamId::SwellTime);
     ctx_.layerGuitar = P(ParamId::LayerGuitar);
+    ctx_.velvet = P(ParamId::Velvet);
     {
         auto M = [&](int i) { return micro_[static_cast<size_t>(i)].load(std::memory_order_relaxed); };
         ctx_.microBell = M(0); ctx_.microPiano = M(1); ctx_.microPluck = M(2); ctx_.microHarmonic = M(3);
@@ -345,12 +347,19 @@ void PadEngine::updateControl() {
         lowShelf_.c.lowShelf(140.0f, 0.7f, db, sr_);
         lastTone_[0] = low;
     }
-    if (std::fabs(warmth - lastTone_[1]) > 1e-4f) {
+    const float velvet = P(ParamId::Velvet);
+    if (std::fabs(warmth - lastTone_[1]) > 1e-4f || std::fabs(velvet - lastVelvet_) > 1e-3f) {
         warmBell_.c.bell(300.0f, 0.8f, warmth * 3.0f - 0.5f, sr_);     // -0,5..+2,5 dB
         warmHighCut_.c.highShelf(6500.0f, 0.7f, -warmth * 3.0f, sr_);  //  0..-3 dB
         satDrive_ = 1.0f + 1.5f * warmth;
-        satMix_ = 0.4f * warmth;
+        satMix_ = 0.4f * warmth * (1.0f - velvet);                     // aveludado: sem saturação
         lastTone_[1] = warmth;
+        // v0.6: agudos menos abertos (o lado perde agudo: as altas ficam mais no centro) e o
+        // envio do reverb mais escuro, para a cauda se misturar ao corpo em vez de "brilhar" à parte.
+        sideHiOn_ = velvet > 0.005f;
+        sideHiL_.setLowpass(20000.0f * std::pow(1800.0f / 20000.0f, velvet), sr_);
+        sendLp_.c.lowpass(7500.0f * std::pow(3000.0f / 7500.0f, velvet), 0.707f, sr_);
+        lastVelvet_ = velvet;
     }
     // v0.5: abafar (passa-baixa de 4 polos, Butterworth) no conjunto, depois do reverb.
     {
@@ -516,6 +525,7 @@ void PadEngine::renderSubBlock(float* out, int n) {
         const float m = 0.5f * (ol + orr);
         float s = 0.5f * (ol - orr);
         s -= sideLp_.lp(s);
+        if (sideHiOn_) s = sideHiL_.lp(s);
         s *= w;
         tmpL_[i] = m + s;
         tmpR_[i] = m - s;
