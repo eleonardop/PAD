@@ -31,7 +31,10 @@ struct Voicing {
 // Monta um voicing aberto, próprio para pad: fundamental perto do centro de registro
 // (evita saltos grandes de registro ao trocar de tom), quinta, e as notas de cor
 // (terça, sétima, nona) uma oitava acima, onde não embolam.
-Voicing buildVoicing(int rootPitchClass, ChordType type);
+// style 1 (v0.5, pads de fundo): acrescenta a quinta ABAIXO da fundamental (como nos pads de
+// "fundo musical": a 5ª grave sustenta e a fundamental fica por cima) e leva as cores para a
+// oitava de cima. Mesmas classes de altura do voicing padrão.
+Voicing buildVoicing(int rootPitchClass, ChordType type, int style = 0);
 
 const char* chordTypeName(ChordType type);
 const char* pitchClassName(int pc);

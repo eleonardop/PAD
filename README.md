@@ -2,9 +2,16 @@
 
 Aplicativo Android de pads ambientais para cultos, ministrações e música ao vivo.
 
-**Versão atual: 0.4 — refinamento.**
+**Versão atual: 0.5 — pads de fundo.**
 
-### Novidades da v0.4
+### Novidades da v0.5
+* **Nova categoria SOFT PADS** (no topo da tela), desenhada a partir de 9 referências de pads de fundo: **Soft Pad**, **Shimmer Pad**, **Deep Pad**, **Wide Pad** e **Guitar Pad**.
+* **Quinta por baixo**: montagem de acorde com a 5ª abaixo da fundamental, como nos pads de fundo.
+* **Abafar** na tela principal: fecha o som inteiro (inclusive o reverb), do aberto ao "abafado".
+* **Guitarra limpa** por síntese própria, em swells com eco, só com notas seguras da tonalidade.
+* Os 8 presets da v0.4 continuam iguais; a v0.4 está guardada no branch `versao-0.4-refino`.
+
+### v0.4
 * **Biblioteca enxuta de 8 presets em 4 funções**: FOUNDATION (Warm, Strings), ATMOSPHERE (Air, Ambient), CHARACTER (Vintage, Cinematic), TEXTURES (Soft Piano, Reverse Bloom). Cada um tem corpo, ataque, reverb, largura e microeventos próprios.
 * **Microeventos**: pequenas notas de sino, piano, harmônico, reverse, prato com arco, arco de cordas ou rajada de fita — raros, sem BPM, sem repetição, só com notas do acorde (7ª/9ª só no agudo e quando combinam com a tonalidade). Controle **Microeventos** na tela principal (zero = nenhum).
 * **Interface limpa**: categorias com botões grandes, preset ativo destacado, 5 controles principais; o resto em **Avançado**, incluindo as versões anteriores dos presets (v0.2 e v0.3).

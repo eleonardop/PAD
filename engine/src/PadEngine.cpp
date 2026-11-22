@@ -73,7 +73,8 @@ bool PadEngine::prepare(float sampleRate, double waitSeconds) {
     lowHp_.c.highpass(28.0f, 0.707f, sr_);
     sendHp_.c.highpass(180.0f, 0.707f, sr_);
     sendLp_.c.lowpass(7500.0f, 0.707f, sr_);
-    for (SvfStereo* f : {&padHp_, &lowLp_, &lowHp_, &lowShelf_, &warmBell_, &warmHighCut_, &tilt_, &sendHp_, &sendLp_}) f->reset();
+    for (SvfStereo* f : {&padHp_, &lowLp_, &lowHp_, &lowShelf_, &warmBell_, &warmHighCut_, &tilt_, &sendHp_, &sendLp_, &toneCutA_, &toneCutB_}) f->reset();
+    lastToneCut_ = -1.0f;
     dcL_.setLowpass(8.0f, sr_); dcR_.setLowpass(8.0f, sr_); dcL_.reset(); dcR_.reset();
     sideLp_.setLowpass(140.0f, sr_); sideLp_.reset();
     for (float& t : lastTone_) t = -1.0f;
@@ -140,6 +141,7 @@ uint32_t PadEngine::wantedMask() const {
     if (M(3)) m |= sourceBit(SourceId::Glass);
     if (M(4)) m |= sourceBit(ep ? SourceId::EpTineRev : SourceId::PianoSoftRev);
     if (M(5)) m |= sourceBit(SourceId::Cymbal);
+    if (M(10) && P(ParamId::LayerGuitar) > 1e-4f) m |= sourceBit(SourceId::GuitarClean);
     return m;
 }
 
@@ -211,8 +213,8 @@ void PadEngine::applyPreset(int index) {
     }
     presetTrim_.store(dbToGain(p.trimDb), std::memory_order_relaxed);
     const MicroPalette& mp = p.micro;
-    const float pv[10] = {mp.bell, mp.piano, mp.pluck, mp.harmonic, mp.reverse, mp.metal, mp.bow, mp.tapeGust, mp.perMinute, mp.highBias};
-    for (int i = 0; i < 10; ++i) micro_[static_cast<size_t>(i)].store(pv[i], std::memory_order_relaxed);
+    const float pv[11] = {mp.bell, mp.piano, mp.pluck, mp.harmonic, mp.reverse, mp.metal, mp.bow, mp.tapeGust, mp.perMinute, mp.highBias, mp.guitar};
+    for (int i = 0; i < 11; ++i) micro_[static_cast<size_t>(i)].store(pv[i], std::memory_order_relaxed);
     refreshWanted();
 }
 
@@ -248,7 +250,7 @@ void PadEngine::handleCommands() {
     while (commands_.pop(c)) {
         switch (c.type) {
             case CmdType::PlayChord: {
-                const Voicing v = buildVoicing(c.root, static_cast<ChordType>(c.chord));
+                const Voicing v = buildVoicing(c.root, static_cast<ChordType>(c.chord), getParam(ParamId::VoicingStyle) >= 0.5f ? 1 : 0);
                 voices_.playChord(v, getParam(ParamId::Attack), getParam(ParamId::CrossfadeTime), getParam(ParamId::Release), ctx_);
                 conductor_.onChord(v, static_cast<ChordType>(c.chord), c.root);
                 break;
@@ -315,11 +317,12 @@ void PadEngine::updateControl() {
     ctx_.bloom = P(ParamId::Bloom);
     ctx_.bloomChance = P(ParamId::BloomChance);
     ctx_.swellTime = P(ParamId::SwellTime);
+    ctx_.layerGuitar = P(ParamId::LayerGuitar);
     {
         auto M = [&](int i) { return micro_[static_cast<size_t>(i)].load(std::memory_order_relaxed); };
         ctx_.microBell = M(0); ctx_.microPiano = M(1); ctx_.microPluck = M(2); ctx_.microHarmonic = M(3);
         ctx_.microReverse = M(4); ctx_.microMetal = M(5); ctx_.microBow = M(6); ctx_.microTapeGust = M(7);
-        ctx_.microPerMinute = M(8); ctx_.microHighBias = M(9);
+        ctx_.microPerMinute = M(8); ctx_.microHighBias = M(9); ctx_.microGuitar = M(10);
     }
     // Maestro: decide eventos e devolve a "segunda camada" e os deslocamentos do organismo.
     conductor_.tick(ctx_, sources_, texture_);
@@ -348,6 +351,20 @@ void PadEngine::updateControl() {
         satDrive_ = 1.0f + 1.5f * warmth;
         satMix_ = 0.4f * warmth;
         lastTone_[1] = warmth;
+    }
+    // v0.5: abafar (passa-baixa de 4 polos, Butterworth) no conjunto, depois do reverb.
+    {
+        const float tc = smooth_[static_cast<int>(ParamId::ToneCut)].value();
+        if (std::fabs(tc - lastToneCut_) > 1e-3f) {
+            toneCutOn_ = tc > 0.005f;
+            // Duas seções de 2 polos em frequências escalonadas: inclinação suave (≈12 dB/oitava
+            // logo acima do corte, chegando a 24 dB/oitava bem acima), como um pad "fechado"
+            // de verdade, e não um corte de parede que deixa os médios intactos.
+            const float fc = 18000.0f * std::pow(420.0f / 18000.0f, tc);
+            toneCutA_.c.lowpass(fc, 0.62f, sr_);
+            toneCutB_.c.lowpass(std::min(fc * 2.8f, 19000.0f), 0.62f, sr_);
+            lastToneCut_ = tc;
+        }
     }
     const float tilt = clampf(bright + 0.6f * (inten - 0.5f), 0.0f, 1.0f); // tocar mais forte = mais brilho
     if (std::fabs(tilt - lastTone_[2]) > 1e-4f) {
@@ -482,8 +499,12 @@ void PadEngine::renderSubBlock(float* out, int n) {
 
         const float dry = dry0 + (dry1 - dry0) * k;
         const float wet = wet0 + (wet1 - wet0) * k;
-        const float ol = (l * dry + wetL_[i] * wet) * kHeadroom;
-        const float orr = (r * dry + wetR_[i] * wet) * kHeadroom;
+        float ol = (l * dry + wetL_[i] * wet) * kHeadroom;
+        float orr = (r * dry + wetR_[i] * wet) * kHeadroom;
+        if (toneCutOn_) {
+            toneCutA_.process(ol, orr);
+            toneCutB_.process(ol, orr);
+        }
 
         // Largura M/S com graves sempre mono (abaixo de ~140 Hz o lado é removido).
         // As fontes da v0.2 já saem quase descorrelacionadas (leituras L/R independentes do

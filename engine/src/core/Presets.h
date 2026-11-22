@@ -12,7 +12,8 @@ struct MicroPalette {
     float bell = 0, piano = 0, pluck = 0, harmonic = 0, reverse = 0, metal = 0, bow = 0, tapeGust = 0;
     float perMinute = 0;   // eventos por minuto com Atividade 0,5 (o dobro com Atividade 1)
     float highBias = 0;    // −1 registro mais baixo do permitido … +1 mais alto
-    bool empty() const { return bell + piano + pluck + harmonic + reverse + metal + bow + tapeGust <= 0.0f; }
+    float guitar = 0;      // v0.5: swells de guitarra com eco
+    bool empty() const { return bell + piano + pluck + harmonic + reverse + metal + bow + tapeGust + guitar <= 0.0f; }
 };
 
 struct Preset {

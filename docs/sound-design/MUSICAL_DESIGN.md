@@ -110,3 +110,14 @@ Pequenos acontecimentos dentro do som: uma nota de sino ou de piano, um harmôni
 | Cinematic | CHARACTER | Grave e vozes, cauda longa — abertura, clímax | reverse, arco, metal, piano |
 | Soft Piano | TEXTURES | Pad atrás de notas de piano esparsas | piano frequente, sino raro |
 | Reverse Bloom | TEXTURES | O acorde "floresce" depois do ataque | reverse, harmônicos |
+
+## 9. Pads de fundo (v0.5)
+Desenhados a partir de 9 referências enviadas pelo usuário (pads "de fundo musical" do YouTube). O que elas têm em comum: quinta pura (às vezes com 9ª), a quinta forte e muitas vezes por baixo, corpo entre 125 e 500 Hz, agudo só como brilho distante, quase nenhum movimento além de uma ondulação lenta, e estéreo de médio a muito largo.
+
+| Preset | Pensado para | Diferença |
+|---|---|---|
+| Soft Pad | ref. 5 (B) | o mais aberto: Abafar 0,25, chorus, largura natural |
+| Shimmer Pad | ref. 1, 3, 9 | escuro e largo, oitavas do shimmer bem baixas, um harmônico raro |
+| Deep Pad | ref. 2, 6, 7 | Abafar 0,75: quase só corpo |
+| Wide Pad | ref. 8 (e 7) | o mais largo (correlação ~0,15), ondulação lenta, grave firme |
+| Guitar Pad | ref. 4 | swells de guitarra com eco sobre um pad leve |

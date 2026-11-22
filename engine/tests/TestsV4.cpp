@@ -240,7 +240,7 @@ TEST(presets_v04_biblioteca) {
     const char* cats[4] = {"FOUNDATION", "ATMOSPHERE", "CHARACTER", "TEXTURES"};
     int perCat[4] = {0, 0, 0, 0};
     for (int i = 0; i < presetCount(); ++i) {
-        if (!presetIsCurrent(i)) continue;
+        if (!presetIsCurrent(i) || std::strcmp(preset(i).category, "SOFT PADS") == 0) continue; // v0.5 à parte
         ++current;
         for (int k = 0; k < 4; ++k) if (std::strcmp(preset(i).category, cats[k]) == 0) ++perCat[k];
         CHECK(!preset(i).micro.empty());
@@ -260,7 +260,7 @@ TEST(presets_v04_tempo_real_mono_e_identidade) {
     long allocs = 0;
     double worstPeak = 0, worstMono = 0;
     for (int i = 0; i < presetCount(); ++i) {
-        if (!presetIsCurrent(i)) continue;
+        if (!presetIsCurrent(i) || std::strcmp(preset(i).category, "SOFT PADS") == 0) continue; // v0.5: TestsV5
         resetEngine(e, i);
         e.setSeed(99);
         e.waitForSources(60.0);

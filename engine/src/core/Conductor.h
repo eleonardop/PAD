@@ -36,7 +36,7 @@ struct ConductorOut {
 // 13 harmônico, 14 reverse curto, 15 prato, 16 arco das cordas (sem nota), 17 fita (sem nota).
 struct NoteLogEntry { float time; int16_t midi; int8_t rootPc; int8_t chordType; uint8_t instrument; int8_t keyPc; float absTime; };
 
-enum class MicroType : uint8_t { Bell = 0, Piano, Pluck, Harmonic, Reverse, Metal, Bow, TapeGust, Count };
+enum class MicroType : uint8_t { Bell = 0, Piano, Pluck, Harmonic, Reverse, Metal, Bow, TapeGust, Guitar, Count };
 
 class Conductor {
 public:
@@ -79,6 +79,7 @@ private:
     // v0.4: microeventos
     void updateKey();
     uint16_t colorMask(int midiLo) const;
+    int chooseGuitarNote(int lo, int hi);
     int chooseMicroNote(int lo, int hi, bool colors, int center);
     void microEvent(const RenderContext& ctx, const SourceLibrary& lib, TexturePlayer& tex);
     float microInterval(const RenderContext& ctx);

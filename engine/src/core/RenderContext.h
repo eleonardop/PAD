@@ -33,6 +33,8 @@ struct RenderContext {
     // v0.4: paleta de microeventos do preset atual (cópia por bloco de controle)
     float microBell = 0, microPiano = 0, microPluck = 0, microHarmonic = 0, microReverse = 0, microMetal = 0;
     float microBow = 0, microTapeGust = 0, microPerMinute = 0, microHighBias = 0;
+    // v0.5
+    float microGuitar = 0, layerGuitar = 0;
     int stringsSource = 0;  // 0 = reais, 1 = sintéticas
     int textureType = 0;    // 0 = piano "Cathedral", 1 = órgão
 };

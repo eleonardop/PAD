@@ -35,3 +35,12 @@ Formato: decisão — motivo — alternativa descartada.
 - D26 Trims recalculados para os 8 novos (≈ −20,7 LUFS no teste interno, ±0,05) — nenhum volume geral aumentado.
 - D27 Estalos orgânicos **não** implementados — o pedido os tornava opcionais, e ruído de vinil/fita foi descartado em D16; a "rajada de fita" (variação lenta e curta do wow, idêntica em L e R) dá a imperfeição sem ruído.
 - D28 Interface: 4 categorias × 2 botões grandes, 5 controles principais (Volume, Reverb, Intensidade, Evolução, Microeventos) e o resto em "Avançado" recolhido.
+
+## v0.5 (pads de fundo, a partir de 9 referências do usuário)
+- D29 **Nova categoria SOFT PADS com 5 presets** (Soft Pad, Shimmer Pad, Deep Pad, Wide Pad, Guitar Pad) — 8 das 9 referências são pads de quinta, escuros, estáveis e largos, e nenhum preset da v0.4 chegava perto (diferença de timbre de 6 a 25 dB) — mexer nos presets v0.4 (perderia o que já foi aprovado).
+- D30 **Voicing "quinta por baixo"** (`VoicingStyle`): 5ª abaixo da fundamental quando ela não desce além de Sol2, cores uma oitava acima; mesmas classes de altura — é a montagem medida nas referências 1, 3 e 9 — dobrar a camada Low (grave demais, embola).
+- D31 **Abafar** (`ToneCut`): passa-baixa de 4 polos em duas seções escalonadas (fc e 2,8·fc) depois do reverb, de 18 kHz a ~420 Hz — as referências caem devagar a partir de ~500 Hz–1 kHz; um corte de parede deixava os médios intactos (testado) — fechar só o filtro das vozes (o reverb e o shimmer continuavam claros).
+- D32 Microeventos desligados nos pads de fundo (só o Shimmer Pad tem um harmônico raro) — nenhuma referência tem eventos.
+- D33 **Guitar Pad**: guitarra limpa por síntese própria (Karplus-Strong com passa-tudo fracionário, um zero de perda, compressor de sustentação 3:1, captador do braço), em swells com 2 ecos de tempo sorteado (0,38–0,62 s, não BPM) — nenhuma guitarra CC0 adequada e o swell esconde o ataque — samples de guitarra comerciais (licença).
+- D34 Notas da guitarra: do acorde + 9ª (diatônica no maior e no menor da fundamental) + 6ª maior só com tonalidade estimada; nunca 4ª nem 7ª; limite de 6 vozes tonais (cada swell traz 2 ecos) e retorno 0,5–1,7 s depois da troca — a guitarra é o próprio pad nesse preset.
+- D35 Abafar entrou nos controles principais (6 controles) — é o ajuste que mais muda entre as referências; o brilho fino continua em Avançado.

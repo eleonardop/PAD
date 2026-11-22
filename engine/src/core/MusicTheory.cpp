@@ -20,7 +20,7 @@ constexpr Shape kShapes[static_cast<int>(ChordType::Count)] = {
 constexpr int kRegisterCenter = 51; // Eb3: fundamental fica entre A#2 (46) e A3 (57)
 }
 
-Voicing buildVoicing(int rootPitchClass, ChordType type) {
+Voicing buildVoicing(int rootPitchClass, ChordType type, int style) {
     const int pc = ((rootPitchClass % 12) + 12) % 12;
     int ti = static_cast<int>(type);
     if (ti < 0 || ti >= static_cast<int>(ChordType::Count)) ti = 0;
@@ -32,8 +32,29 @@ Voicing buildVoicing(int rootPitchClass, ChordType type) {
     while (kRegisterCenter - root > 5) root += 12;
 
     Voicing v;
-    v.count = s.n;
-    for (int i = 0; i < s.n; ++i) v.notes[i] = root + s.iv[i];
+    if (style == 1) {
+        int iv[kMaxChordNotes];
+        int n = 0;
+        // Só quando a quinta de baixo não desce além de Sol2 (~98 Hz); em Si e Lá# a fundamental
+        // já está no grave e a quinta fica por cima, como no voicing padrão.
+        if (root >= 48) iv[n++] = -5;
+        iv[n++] = 0;
+        iv[n++] = 7;
+        iv[n++] = 12;
+        for (int i = 0; i < s.n && n < kMaxChordNotes; ++i) {
+            const int x = s.iv[i];
+            if (x == 0 || x == 7 || x == 12 || x == 19) continue;
+            iv[n++] = x < 12 ? x + 12 : x;
+        }
+        if (n < kMaxChordNotes) iv[n++] = 19;
+        for (int i = 1; i < n; ++i)
+            for (int j = i; j > 0 && iv[j - 1] > iv[j]; --j) { const int t = iv[j]; iv[j] = iv[j - 1]; iv[j - 1] = t; }
+        v.count = n;
+        for (int i = 0; i < n; ++i) v.notes[i] = root + iv[i];
+    } else {
+        v.count = s.n;
+        for (int i = 0; i < s.n; ++i) v.notes[i] = root + s.iv[i];
+    }
     v.rootNote = root;
     // Camada Low: fundamental na faixa 33..44 (A1..G#2, ~55–104 Hz), acima da região do bumbo
     // e abaixo do corpo do baixo elétrico na maior parte das tonalidades.

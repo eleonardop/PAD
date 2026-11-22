@@ -381,6 +381,7 @@ float microCooldown(MicroType t) {
         case MicroType::Metal: return 22.0f;
         case MicroType::Bow: return 14.0f;
         case MicroType::TapeGust: return 16.0f;
+        case MicroType::Guitar: return 2.5f;
         default: return 10.0f;
     }
 }
@@ -448,6 +449,43 @@ int Conductor::chooseMicroNote(int lo, int hi, bool colors, int center) {
     return cand[n - 1];
 }
 
+// Guitarra: notas do acorde mais, com a tonalidade estimada, a 9ª e a 6ª maior (se estiverem na
+// escala) — as notas "seguras" que os guitarristas usam nos swells. Nunca 4ª nem 7ª, que brigam
+// com a troca de acorde; no Pad5 nunca a terça. Linha suave como nas outras texturas.
+int Conductor::chooseGuitarNote(int lo, int hi) {
+    uint16_t extra = 0;
+    // A 9ª do acorde é diatônica tanto na tonalidade maior quanto na menor da fundamental: sem
+    // tonalidade estimada (um acorde só, sustentado) ela já pode entrar; 6ª só com tonalidade.
+    if (keyPc_ < 0 && type_ != ChordType::Sus4 && type_ != ChordType::Dominant7)
+        extra = static_cast<uint16_t>(1u << ((rootPc_ + 2) % 12));
+    if (keyPc_ >= 0) {
+        const int ninth = (rootPc_ + 2) % 12, sixth = (rootPc_ + 9) % 12;
+        if (type_ != ChordType::Sus4 && inScale(keyPc_, ninth)) extra = static_cast<uint16_t>(extra | (1u << ninth));
+        if (!isMinor(type_) && type_ != ChordType::Pad5 && inScale(keyPc_, sixth)) extra = static_cast<uint16_t>(extra | (1u << sixth));
+    }
+    int cand[40];
+    float w[40];
+    int n = 0;
+    const int ref = (lastNote_ >= lo - 7 && lastNote_ <= hi + 7) ? lastNote_ : (lo + hi) / 2;
+    for (int m = lo; m <= hi && n < 40; ++m) {
+        const int pc = m % 12;
+        const bool tone = (pcMask_ >> pc) & 1;
+        const bool color = (extra >> pc) & 1;
+        if (!tone && !color) continue;
+        const int iv = std::abs(m - ref);
+        float weight = iv == 0 ? (repeatCount_ >= 1 ? 0.0f : 0.3f) : iv <= 2 ? 1.0f : iv <= 5 ? 0.9f : iv <= 9 ? 0.4f : 0.12f;
+        if (color) weight *= 0.6f;
+        if (weight <= 0.0f) continue;
+        cand[n] = m; w[n] = weight; ++n;
+    }
+    if (n == 0) return -1;
+    float tot = 0.0f;
+    for (int i = 0; i < n; ++i) tot += w[i];
+    float r = rng_.uniform() * tot;
+    for (int i = 0; i < n; ++i) { r -= w[i]; if (r <= 0.0f) return cand[i]; }
+    return cand[n - 1];
+}
+
 // Próximo microevento em "unidades de evento": o relógio avança na taxa atual (por minuto), então
 // mudar a Atividade vale na hora, sem esperar um intervalo agendado com o valor antigo.
 float Conductor::microInterval(const RenderContext& /*ctx*/) {
@@ -459,23 +497,25 @@ float Conductor::microInterval(const RenderContext& /*ctx*/) {
 
 void Conductor::microEvent(const RenderContext& ctx, const SourceLibrary& lib, TexturePlayer& tex) {
     const float since = static_cast<float>(now_ - chordStart_);
-    if (since < 1.2f) return;
+    const bool guitarPad = ctx.microGuitar > 0.0f && ctx.layerGuitar > 0.02f;
+    if (since < (guitarPad ? 0.5f : 1.2f)) return;
     // Densidade: nunca mais de 3 microeventos tonais soando ao mesmo tempo.
-    if (tex.activeInGroup(3) >= 3) return;
+    // (com guitarra na paleta o limite é 6: cada swell traz até 2 ecos, que também contam.)
+    if (tex.activeInGroup(3) >= (guitarPad ? 6 : 3)) return;
     // "Pode não acontecer nada."
     if (rng_.uniform() < 0.2f) return;
 
     // A história do acorde: o que cabe em cada momento.
     float story[static_cast<size_t>(MicroType::Count)];
-    if (since < 4.0f) { const float s0[] = {0.4f, 0.6f, 0.7f, 0.2f, 0.0f, 0.0f, 0.3f, 0.5f}; std::copy(s0, s0 + 8, story); }
-    else if (since < 12.0f) { const float s1[] = {1.0f, 1.0f, 1.0f, 1.0f, 0.5f, 0.4f, 1.0f, 1.0f}; std::copy(s1, s1 + 8, story); }
-    else { const float s2[] = {1.0f, 0.8f, 0.8f, 1.2f, 1.2f, 1.0f, 1.0f, 1.0f}; std::copy(s2, s2 + 8, story); }
+    if (since < 4.0f) { const float s0[] = {0.4f, 0.6f, 0.7f, 0.2f, 0.0f, 0.0f, 0.3f, 0.5f, 0.8f}; std::copy(s0, s0 + 9, story); }
+    else if (since < 12.0f) { const float s1[] = {1.0f, 1.0f, 1.0f, 1.0f, 0.5f, 0.4f, 1.0f, 1.0f, 1.0f}; std::copy(s1, s1 + 9, story); }
+    else { const float s2[] = {1.0f, 0.8f, 0.8f, 1.2f, 1.2f, 1.0f, 1.0f, 1.0f, 1.0f}; std::copy(s2, s2 + 9, story); }
 
     const float pal[] = {ctx.microBell, ctx.microPiano, ctx.microPluck, ctx.microHarmonic,
-                         ctx.microReverse, ctx.microMetal, ctx.microBow, ctx.microTapeGust};
+                         ctx.microReverse, ctx.microMetal, ctx.microBow, ctx.microTapeGust, ctx.microGuitar};
     // Volume de cada família = nível da camada correspondente no preset.
     const float vol[] = {ctx.layerSparkle, ctx.layerKeys, ctx.layerKeys, ctx.layerSparkle,
-                         ctx.layerKeys, ctx.layerMetal, ctx.layerStrings, ctx.tape};
+                         ctx.layerKeys, ctx.layerMetal, ctx.layerStrings, ctx.tape, ctx.layerGuitar};
     // Espaço espectral: com o pad já brilhante ou cheio de ar, menos eventos agudos.
     const float highSpace = (ctx.brightness > 0.55f ? 0.6f : 1.0f) * (ctx.layerAir + ctx.layerShimmer > 0.9f ? 0.7f : 1.0f);
     float w[static_cast<size_t>(MicroType::Count)];
@@ -484,7 +524,7 @@ void Conductor::microEvent(const RenderContext& ctx, const SourceLibrary& lib, T
         float x = pal[t] * story[t] * (vol[t] > 0.02f ? 1.0f : 0.0f);
         if (t == static_cast<int>(MicroType::Bell) || t == static_cast<int>(MicroType::Harmonic)) x *= highSpace;
         if (now_ - lastTypeAt_[static_cast<size_t>(t)] < microCooldown(static_cast<MicroType>(t))) x = 0.0f;
-        if (t == lastType_) x *= sameTypeRun_ >= 2 ? 0.0f : 0.35f;
+        if (t == lastType_ && t != static_cast<int>(MicroType::Guitar)) x *= sameTypeRun_ >= 2 ? 0.0f : 0.35f;
         w[t] = x;
         tot += x;
     }
@@ -583,6 +623,31 @@ void Conductor::microEvent(const RenderContext& ctx, const SourceLibrary& lib, T
             gustStart_ = now_;
             fired = true;
             break;
+        case MicroType::Guitar: {
+            // Swell de guitarra (pedal de volume) com dois ecos que trocam de lado. O tempo do
+            // eco é sorteado a cada swell (0,38–0,62 s): eco de ambiente, não grade rítmica.
+            note = chooseGuitarNote(57 + shift, 86 + shift);
+            if (note < 0) break;
+            e.source = SourceId::GuitarClean; e.midi = note;
+            e.level = 1.1f * ctx.layerGuitar * vel; // no Guitar Pad a guitarra é o som principal
+            e.attack = 0.7f + 1.1f * rng_.uniform(); e.attackCurve = 2.2f;
+            e.hold = 1.2f + 2.0f * rng_.uniform(); e.release = 4.5f;
+            e.lowpassHz = 3200.0f + 2400.0f * ctx.brightness; e.highpassHz = 220.0f;
+            fired = tex.trigger(e, lib);
+            if (fired) {
+                const float echo = 0.38f + 0.24f * rng_.uniform();
+                for (int k = 1; k <= 2; ++k) {
+                    TexEvent d = e;
+                    d.delay = echo * static_cast<float>(k);
+                    d.pan = clampf(k == 1 ? -e.pan * 1.1f : e.pan * 1.2f, -0.7f, 0.7f);
+                    d.level = e.level * (k == 1 ? 0.42f : 0.18f);
+                    d.lowpassHz = e.lowpassHz * (k == 1 ? 0.8f : 0.62f);
+                    d.priority = 0;
+                    tex.trigger(d, lib);
+                }
+            }
+            break;
+        }
         default: break;
     }
     if (!fired && mt != MicroType::Bow && mt != MicroType::TapeGust && note < 0) return;
@@ -638,7 +703,9 @@ void Conductor::tick(const RenderContext& ctx, const SourceLibrary& lib, Texture
         // Primeira nota de textura: nunca no instante da troca.
         nextTexAt_ = ctx.activity > 1e-3f ? now_ + 0.6 + 1.9 * rng_.uniform() : 1e30;
         // Microeventos: o primeiro do acorde vem depois do estabelecimento (ou nunca).
-        nextMicroAt_ = now_ + 1.2 + 3.0 * rng_.uniform();
+        // (guitarra: o swell é o próprio pad, então ele volta mais cedo — 0,5 a 1,7 s)
+        const bool guitarPad = ctx.microGuitar > 0.0f && ctx.layerGuitar > 0.02f;
+        nextMicroAt_ = now_ + (guitarPad ? 0.5 + 1.2 * rng_.uniform() : 1.2 + 3.0 * rng_.uniform());
         if (nextMetalAt_ > now_ + 120.0) nextMetalAt_ = now_ + 20.0 + 30.0 * rng_.uniform();
     }
     if (swellPending_) {
@@ -658,7 +725,7 @@ void Conductor::tick(const RenderContext& ctx, const SourceLibrary& lib, Texture
         out_.age = age_;
 
         const bool palette = ctx.microBell + ctx.microPiano + ctx.microPluck + ctx.microHarmonic + ctx.microReverse +
-                             ctx.microMetal + ctx.microBow + ctx.microTapeGust > 0.0f;
+                             ctx.microMetal + ctx.microBow + ctx.microTapeGust + ctx.microGuitar > 0.0f;
         if (palette) {
             // v0.4: microeventos pela paleta do preset (substituem as notas de textura da v0.3).
             // Atividade abaixo de 2% = desligado. (Os parâmetros sobem suavizados: agendar com a

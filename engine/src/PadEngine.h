@@ -139,7 +139,7 @@ private:
     // Moduladores globais da Evolução: soma de senos com razões irracionais (quase periódica).
     // Um ruído suave pode passar dezenas de segundos quase parado; aqui o percurso é garantido.
     std::atomic<float> presetTrim_{1.0f};
-    std::array<std::atomic<float>, 10> micro_{}; // paleta de microeventos do preset (v0.4) // ganho linear do trim do preset atual
+    std::array<std::atomic<float>, 11> micro_{}; // paleta de microeventos do preset (v0.4) // ganho linear do trim do preset atual
     double evoPhase_[6] = {0.0, 0.37, 0.71, 0.13, 0.52, 0.89};
 
     SpscRingBuffer<Command, 256> commands_;
@@ -159,6 +159,9 @@ private:
     std::array<uint16_t, kSourceCount> usage_{};
 
     // Cadeia master
+    SvfStereo toneCutA_, toneCutB_;
+    float lastToneCut_ = -1.0f;
+    bool toneCutOn_ = false;
     SvfStereo padHp_, lowLp_, lowHp_, lowShelf_, warmBell_, warmHighCut_, tilt_, sendHp_, sendLp_;
     OnePole dcL_, dcR_, sideLp_;
     EnsembleChorus ensemble_;

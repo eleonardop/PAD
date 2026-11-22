@@ -34,10 +34,11 @@ import com.eleonardop.pad.engine.PadParam
 import com.eleonardop.pad.engine.PadPlaybackService
 
 /**
- * Tela do PAD Worship (v0.4).
+ * Tela do PAD Worship (v0.5).
  *
- * Principal: biblioteca de 8 sons em 4 categorias, tom, tipo de acorde, SWELL/PARAR e cinco
- * controles (Volume, Reverb, Intensidade, Evolução, Microeventos). Todo o resto — parâmetros
+ * Principal: biblioteca por categoria (SOFT PADS com 5 sons; as outras com 2), tom, tipo de
+ * acorde, SWELL/PARAR e seis controles (Volume, Reverb, Abafar, Intensidade, Evolução,
+ * Microeventos). Todo o resto — parâmetros
  * avançados, versões anteriores dos presets, desempenho e créditos — fica em "Avançado".
  */
 class MainActivity : Activity() {
@@ -63,7 +64,7 @@ class MainActivity : Activity() {
     private val panel = Color.rgb(30, 33, 40)
     private val accent = Color.rgb(222, 178, 92)
     private val keyActive = Color.rgb(40, 110, 220)
-    private val mainParams = listOf(PadParam.MASTER_VOLUME, PadParam.REVERB, PadParam.INTENSITY, PadParam.EVOLUTION, PadParam.ACTIVITY)
+    private val mainParams = listOf(PadParam.MASTER_VOLUME, PadParam.REVERB, PadParam.TONE_CUT, PadParam.INTENSITY, PadParam.EVOLUTION, PadParam.ACTIVITY)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -141,8 +142,9 @@ class MainActivity : Activity() {
         // ---- Biblioteca: categorias com dois sons cada
         for ((cat, indices) in PadEngine.library) {
             root.addView(sectionTitle(cat))
+            for (chunk in indices.chunked(3)) {
             val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-            for (i in indices) {
+            for (i in chunk) {
                 val b = Button(this).apply {
                     text = PadEngine.presetNames[i]
                     isAllCaps = false
@@ -154,7 +156,10 @@ class MainActivity : Activity() {
                 presetButtons[i] = b
                 row.addView(b, LinearLayout.LayoutParams(0, dp(56), 1f).apply { setMargins(dp(4), dp(2), dp(4), dp(2)) })
             }
+            // linha incompleta: espaço vazio para os botões manterem o mesmo tamanho
+            if (indices.size > 2) repeat(3 - chunk.size) { row.addView(View(this), LinearLayout.LayoutParams(0, dp(56), 1f).apply { setMargins(dp(4), dp(2), dp(4), dp(2)) }) }
             root.addView(row)
+            }
         }
         description = label("", 12f).apply { setPadding(dp(4), dp(8), dp(4), dp(6)) }
         root.addView(description)
@@ -232,6 +237,7 @@ class MainActivity : Activity() {
         PadParam.INTENSITY -> "Intensidade"
         PadParam.EVOLUTION -> "Evolução"
         PadParam.ACTIVITY -> "Microeventos"
+        PadParam.TONE_CUT -> "Abafar"
         else -> p.label
     }
 
@@ -266,8 +272,8 @@ class MainActivity : Activity() {
             "CAMADAS" to listOf(PadParam.LAYER_WARM, PadParam.LAYER_VOX, PadParam.LAYER_STRINGS, PadParam.LAYER_TEXTURE,
                 PadParam.LAYER_AIR, PadParam.LAYER_SHIMMER, PadParam.LAYER_LOW),
             "TEXTURAS E TRANSIÇÕES" to listOf(PadParam.LAYER_KEYS, PadParam.LAYER_SPARKLE, PadParam.LAYER_METAL,
-                PadParam.BLOOM, PadParam.BLOOM_CHANCE, PadParam.SWELL_TIME, PadParam.TAPE),
-            "CARÁTER" to listOf(PadParam.CHORUS, PadParam.WARMTH, PadParam.BRIGHTNESS, PadParam.AIR, PadParam.LOW,
+                PadParam.BLOOM, PadParam.BLOOM_CHANCE, PadParam.SWELL_TIME, PadParam.TAPE, PadParam.LAYER_GUITAR),
+            "CARÁTER" to listOf(PadParam.CHORUS, PadParam.WARMTH, PadParam.BRIGHTNESS, PadParam.TONE_CUT, PadParam.AIR, PadParam.LOW,
                 PadParam.WIDTH, PadParam.MOVEMENT, PadParam.DETUNE),
             "REVERB" to listOf(PadParam.REVERB_DECAY, PadParam.REVERB_SIZE, PadParam.REVERB_DAMPING, PadParam.PRE_DELAY,
                 PadParam.EARLY_REFLECTIONS, PadParam.DIFFUSION, PadParam.SHIMMER),
