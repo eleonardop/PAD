@@ -49,7 +49,11 @@ enum class PadParam(val label: String, val choices: List<String>? = null) {
     ACTIVITY("Atividade das texturas"),
     BLOOM("Transições: intensidade (Bloom)"),
     BLOOM_CHANCE("Transições: frequência"),
-    SWELL_TIME("Tempo do Swell manual (s)");
+    SWELL_TIME("Tempo do Swell manual (s)"),
+    // v0.5
+    TONE_CUT("Abafar (fecha o som inteiro)"),
+    VOICING_STYLE("Montagem do acorde", listOf("Padrão", "Quinta por baixo (pads de fundo)")),
+    LAYER_GUITAR("Guitarra (swells)");
 
     val id: Int get() = ordinal
     val range: FloatArray by lazy { NativeBridge.nativeParamRange(ordinal) } // [min, max, padrão]
@@ -139,7 +143,7 @@ object PadEngine {
 
     /** Biblioteca principal (v0.4): categoria -> índices, na ordem de exibição. */
     val library: List<Pair<String, List<Int>>> by lazy {
-        listOf("FOUNDATION", "ATMOSPHERE", "CHARACTER", "TEXTURES").map { cat ->
+        listOf("SOFT PADS", "FOUNDATION", "ATMOSPHERE", "CHARACTER", "TEXTURES").map { cat ->
             cat to presetCategories.indices.filter { presetCategories[it] == cat }
         }.filter { it.second.isNotEmpty() }
     }

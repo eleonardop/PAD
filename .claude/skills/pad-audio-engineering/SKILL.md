@@ -49,6 +49,11 @@ approved; the user decides by listening.
 - `PadEngine::setSeed()` makes runs reproducible; tests and listening WAVs always set it.
 - Listening package: `pad_scenarios_refino` + `tools/compare/make_refino_package.py` (-20 LUFS, TP ≤ -1, originals kept, mono without renormalizing).
 
+## v0.5 additions
+- Presets 24–28 = category SOFT PADS (backing pads designed from the user's 9 YouTube references; analysis kept out of the repo — never redistribute the reference audio).
+- New params at the end: `ToneCut` (4-pole post-reverb lowpass, 0 = bypass), `VoicingStyle` (1 = fifth below the root), `LayerGuitar`. Source `GuitarClean` (own Karplus-Strong, built in the loader). MicroType::Guitar with echoes; group-3 cap is 6 only when the guitar palette is active.
+- Listening package: `pad_scenarios_pads` + `make_refino_package.py`.
+
 ## Licensing
 Only CC0 / public domain / licenses explicitly allowing commercial redistribution, verified on
 the specific file's repository. No GPL/LGPL/AGPL code (JUCE, Surge excluded). Update

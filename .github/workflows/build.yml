@@ -67,6 +67,11 @@ jobs:
           ./build/engine/pad_scenarios_refino refino_bruto assets
           python3 tools/compare/make_refino_package.py refino_bruto refino_v04
 
+      - name: Pads de fundo v0.5 — tons das referências, v0.4 × v0.5, progressão
+        run: |
+          ./build/engine/pad_scenarios_pads pads_bruto assets
+          python3 tools/compare/make_refino_package.py pads_bruto pads_v05
+
       - name: Publicar resultados (testes, desempenho, WAVs)
         uses: actions/upload-artifact@v4
         with:
@@ -99,6 +104,17 @@ jobs:
             refino_v04/originais/
             refino_v04/loudness.csv
             refino_v04/loudness.md
+
+      - name: Publicar pacote de escuta v0.5 (pads de fundo)
+        uses: actions/upload-artifact@v4
+        with:
+          name: PAD-v05-pads-escuta
+          path: |
+            pads_v05/estereo/
+            pads_v05/mono/
+            pads_v05/originais/
+            pads_v05/loudness.csv
+            pads_v05/loudness.md
 
   motor-arm64:
     name: Motor C++ (ARM64) — testes e desempenho

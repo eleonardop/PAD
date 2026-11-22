@@ -56,6 +56,10 @@ enum class ParamId : int32_t {
     Bloom,             // 0..1  intensidade das transições automáticas
     BloomChance,       // 0..1  frequência das transições automáticas
     SwellTime,         // segundos até o pico do pre-swell manual
+    // ---- v0.5 (no fim, para manter os ids anteriores)
+    ToneCut,           // 0..1  abafar: passa-baixa de 4 polos no conjunto (0 = desligado, 1 = ~420 Hz)
+    VoicingStyle,      // 0 = voicing padrão, 1 = quinta por baixo (pads de fundo: 5ª abaixo da fundamental)
+    LayerGuitar,       // 0..1  swells de guitarra (microeventos do tipo guitarra)
     Count
 };
 
@@ -112,6 +116,9 @@ inline const ParamInfo& paramInfo(ParamId id) {
         {"bloom", 0.0f, 1.0f, 0.0f, 0.10f},
         {"bloom_chance", 0.0f, 1.0f, 0.0f, 0.10f},
         {"swell_time", 1.5f, 8.0f, 4.0f, 0.0f},
+        {"tone_cut", 0.0f, 1.0f, 0.0f, 0.15f},
+        {"voicing_style", 0.0f, 1.0f, 0.0f, 0.0f},
+        {"layer_guitar", 0.0f, 1.0f, 0.0f, 0.05f},
     };
     return kInfo[static_cast<int>(id)];
 }

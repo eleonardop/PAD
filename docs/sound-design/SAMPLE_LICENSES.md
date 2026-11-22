@@ -18,6 +18,8 @@ explicitamente redistribuição comercial**, verificada no repositório de orige
 Processamento feito pelo PAD (em `tools/samplelab/prepare_samples.py`): conversão para 48 kHz,
 recorte, fade, filtros suaves, normalização e FLAC 16 bits. Os reverses (piano e prato) e o EP
 são gerados pelo próprio motor no carregamento, a partir desses arquivos ou por síntese.
+A guitarra limpa da v0.5 (Guitar Pad) é síntese própria por Karplus-Strong estendido
+(`SourceLibrary::buildGuitar`): nenhuma gravação nem código de terceiros.
 
 ## Avaliadas e não usadas
 

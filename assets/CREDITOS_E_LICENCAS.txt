@@ -48,6 +48,9 @@ CÓDIGO DE TERCEIROS
 
 SONS SINTÉTICOS
 As camadas Warm, Vox (coral), Air, Shimmer (Glass), Low, as cordas sintéticas e o piano
-elétrico (EP, síntese FM própria) são geradas pelo próprio app, sem samples de terceiros.
+elétrico (EP, síntese FM própria) e a guitarra limpa dos swells (v0.5, síntese de corda
+Karplus-Strong própria) são geradas pelo próprio app, sem samples de terceiros.
+O algoritmo de Karplus-Strong (corda dedilhada por linha de atraso) foi publicado por
+Kevin Karplus e Alex Strong em 1983; a implementação foi escrita do zero.
 O algoritmo PADsynth foi descrito por Nasca Octavian Paul; a implementação no PAD
 Worship foi escrita do zero a partir da descrição publicada.

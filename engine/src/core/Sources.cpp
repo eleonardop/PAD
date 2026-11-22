@@ -69,7 +69,7 @@ bool decodeFlac16(const std::vector<uint8_t>& data, std::vector<int16_t>& pcm, i
 
 const char* sourceName(SourceId s) {
     static const char* kNames[kSourceCount] = {"warm_escuro", "warm_aberto", "vox_ah", "vox_oh", "air_a", "air_b", "glass",
-                                               "cordas_reais", "cordas_sinteticas", "piano_cathedral", "orgao", "piano_suave", "piano_suave_rev", "ep", "ep_rev", "vibrafone", "pratos", "pratos_rev"};
+                                               "cordas_reais", "cordas_sinteticas", "piano_cathedral", "orgao", "piano_suave", "piano_suave_rev", "ep", "ep_rev", "vibrafone", "pratos", "pratos_rev", "guitarra"};
     const int i = static_cast<int>(s);
     return (i >= 0 && i < kSourceCount) ? kNames[i] : "?";
 }
@@ -342,6 +342,7 @@ bool SourceLibrary::loadSource(SourceId s, ZoneBank& out) {
         case SourceId::Vibes: return assets_ && loadSampleSet(*assets_, "vibes", out);
         case SourceId::Cymbal: return assets_ && loadSampleSet(*assets_, "cymbal", out);
         case SourceId::EpTine: return buildEp(sr_, out);
+        case SourceId::GuitarClean: return buildGuitar(sr_, out);
         case SourceId::PianoSoftRev: {
             ZoneBank tmp;
             if (!assets_ || !loadSampleSet(*assets_, "piano_soft", tmp)) return false;
